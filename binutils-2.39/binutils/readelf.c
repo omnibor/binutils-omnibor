@@ -19525,6 +19525,26 @@ print_core_note (Elf_Internal_Note *pnote)
 }
 
 static const char *
+get_gitbom_elf_note_type (unsigned e_type)
+{
+  /* NB/ Keep this switch statement in sync with print_gitbom_note ().  */
+  switch (e_type)
+    {
+    case NT_GITBOM_SHA1:
+      return _("NT_GITBOM (SHA1 GITOID)");
+    case NT_GITBOM_SHA256:
+      return _("NT_GITBOM (SHA256 GITOID)");
+    default:
+      {
+	static char buff[64];
+
+	snprintf (buff, sizeof (buff), _("Unknown note type: (0x%08x)"), e_type);
+	return buff;
+      }
+    }
+}
+
+static const char *
 get_gnu_elf_note_type (unsigned e_type)
 {
   /* NB/ Keep this switch statement in sync with print_gnu_note ().  */
@@ -20167,6 +20187,52 @@ print_gnu_property_note (Filedata * filedata, Elf_Internal_Note * pnote)
     }
 
   printf ("\n");
+}
+
+static bool
+print_gitbom_note (Elf_Internal_Note *pnote)
+{
+  /* NB/ Keep this switch statement in sync with get_gnu_elf_note_type ().  */
+  switch (pnote->type)
+    {
+    case NT_GITBOM_SHA1:
+      {
+	unsigned long i;
+
+	printf (_("    SHA1 GitOID: "));
+	for (i = 0; i < pnote->descsz; ++i)
+	  printf ("%02x", pnote->descdata[i] & 0xff);
+	printf ("\n");
+      }
+      break;
+
+    case NT_GITBOM_SHA256:
+      {
+	unsigned long i;
+
+	printf (_("    SHA256 GitOID: "));
+	for (i = 0; i < pnote->descsz; ++i)
+	  printf ("%02x", pnote->descdata[i] & 0xff);
+	printf ("\n");
+      }
+      break;
+
+    default:
+      /* Handle unrecognised types.  An error message should have already been
+	 created by get_gitbom_elf_note_type(), so all that we need to do is to
+	 display the data.  */
+      {
+	unsigned long i;
+
+	printf (_("    Description data: "));
+	for (i = 0; i < pnote->descsz; ++i)
+	  printf ("%02x ", pnote->descdata[i] & 0xff);
+	printf ("\n");
+      }
+      break;
+    }
+
+  return true;
 }
 
 static bool
@@ -21540,6 +21606,10 @@ process_note (Elf_Internal_Note *  pnote,
   else if (startswith (pnote->namedata, "stapsdt"))
     nt = get_stapsdt_note_type (pnote->type);
 
+  else if (startswith (pnote->namedata, "GITBOM"))
+    /* GNU-specific object file notes.  */
+    nt = get_gitbom_elf_note_type (pnote->type);
+
   else
     /* Don't recognize this note name; just use the default set of
        note type strings.  */
@@ -21580,6 +21650,8 @@ process_note (Elf_Internal_Note *  pnote,
   else if (startswith (pnote->namedata, "AMDGPU")
 	   && pnote->type == NT_AMDGPU_METADATA)
     return print_amdgpu_note (pnote);
+  else if (startswith (pnote->namedata, "GITBOM"))
+    return print_gitbom_note (pnote);
 
   print_note_contents_hex (pnote);
   return true;
