@@ -63,4 +63,6 @@ extern void add_ignoresym (struct bfd_link_info *, const char *);
 extern void add_keepsyms_file (const char *);
 extern void track_dependency_files (const char *);
 
+extern void gitbom_add_to_bom_sections (const char *, char *, unsigned long);
+
 #endif

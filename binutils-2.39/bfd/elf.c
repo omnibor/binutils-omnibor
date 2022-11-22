@@ -6782,6 +6782,9 @@ _bfd_elf_write_object_contents (bfd *abfd)
   if (t->o->build_id.after_write_object_contents != NULL
       && !(*t->o->build_id.after_write_object_contents) (abfd))
     return false;
+  if (t->o->gitbom.after_write_object_contents != NULL
+      && !(*t->o->gitbom.after_write_object_contents) (abfd))
+    return false;
   if (t->o->package_metadata.after_write_object_contents != NULL
       && !(*t->o->package_metadata.after_write_object_contents) (abfd))
     return false;

@@ -40,10 +40,14 @@
 #include "ldfile.h"
 #include "ldemul.h"
 #include "ldctor.h"
+#include "ldelf.h"
 #if BFD_SUPPORTS_PLUGINS
 #include "plugin.h"
 #include "plugin-api.h"
 #endif /* BFD_SUPPORTS_PLUGINS */
+
+#include "sha1.h"
+#include <dirent.h>
 
 /* Somewhere above, sys/stat.h got included.  */
 #if !defined(S_ISDIR) && defined(S_IFDIR)
@@ -208,6 +212,826 @@ write_dependency_file (void)
 
   fclose (out);
 }
+
+struct gitbom_dirs
+{
+  struct gitbom_dirs *next;
+  DIR *dir;
+};
+
+static struct gitbom_dirs *gitbom_dirs_head, *gitbom_dirs_tail;
+
+static void
+gitbom_add_to_dirs (DIR **directory)
+{
+  struct gitbom_dirs *elem
+    = (struct gitbom_dirs *) xmalloc (sizeof (*elem));
+  elem->dir = *directory;
+  elem->next = NULL;
+  if (gitbom_dirs_head == NULL)
+    gitbom_dirs_head = elem;
+  else
+    gitbom_dirs_tail->next = elem;
+  gitbom_dirs_tail = elem;
+}
+
+/* Return the position of the first occurrence after start_pos position
+   of char c in str string (start_pos is the first position to check).  */
+
+static int
+gitbom_find_char_from_pos (unsigned start_pos, char c, const char *str)
+{
+  for (unsigned ix = start_pos; ix < strlen (str); ix++)
+    if (str[ix] == c)
+      return ix;
+
+  return -1;
+}
+
+/* Return the position of the last occurrence of char c in the entire
+   str string.  */
+
+static int
+gitbom_find_last_of (char c, const char *str)
+{
+  int ret = -1;
+  for (unsigned ix = 0; ix < strlen (str); ix++)
+    if (str[ix] == c)
+      ret = ix;
+
+  return ret;
+}
+
+/* Append the string str2 to the end of the string str1.  */
+
+static void
+gitbom_append_to_string (char **str1, const char *str2,
+			 unsigned long len1, unsigned long len2)
+{
+  *str1 = (char *) xrealloc
+	(*str1, sizeof (char) * (len1 + len2 + 1));
+  strcat (*str1, str2);
+}
+
+/* Add the string str2 as a prefix to the string str1.  */
+
+static void
+gitbom_add_prefix_to_string (char **str1, const char *str2)
+{
+  char *temp = (char *) xcalloc
+	((strlen (*str1) + strlen (str2) + 1), sizeof (char));
+  strcat (temp, str2);
+  strcat (temp, *str1);
+  *str1 = (char *) xrealloc
+	(*str1, sizeof (char) * (strlen (*str1) + strlen (str2) + 1));
+  strcpy (*str1, temp);
+  free (temp);
+}
+
+/* Get the substring of length len of the str2 string starting from
+   the start position and put it in the str1 string.  */
+
+static void
+gitbom_substr (char **str1, unsigned start, unsigned len, const char *str2)
+{
+  *str1 = (char *) xrealloc
+	(*str1, sizeof (char) * (len + 1));
+  strncpy (*str1, str2 + start, len);
+  (*str1)[len] = '\0';
+}
+
+/* Set the string str1 to have the contents of the string str2.  */
+
+static void
+gitbom_set_contents (char **str1, const char *str2, unsigned long len)
+{
+  *str1 = (char *) xrealloc
+	(*str1, sizeof (char) * (len + 1));
+  strcpy (*str1, str2);
+}
+
+/* Get the path of the directory where the resulting executable will be
+   stored, because the GitBOM information should be stored there as well,
+   in the default case (when GITBOM_DIR environment variable is not set
+   and --gitbom=<arg> is not used, but --gitbom is used instead).  */
+
+static void
+gitbom_get_destdir (const char *gcc_opts, char **res)
+{
+  char *path = (char *) xcalloc (1, sizeof (char));
+  char *temp = (char *) xcalloc (1, sizeof (char));
+
+  int old_i = 0, i = 0;
+  while ((i = gitbom_find_char_from_pos (i, ' ', gcc_opts)) != -1)
+    {
+      gitbom_substr (&temp, old_i, i - old_i, gcc_opts);
+      if (strcmp ("'-o'", temp) == 0)
+        {
+          i = i + 1;
+	  old_i = i;
+
+          if ((i = gitbom_find_char_from_pos (i, ' ', gcc_opts)) != -1)
+            {
+              gitbom_substr (&temp, old_i + 1, i - old_i - 2, gcc_opts);
+              gitbom_set_contents (&path, temp, strlen (temp));
+	      i = i + 1;
+	      old_i = i;
+            }
+        }
+      else
+        {
+          i = i + 1;
+	  old_i = i;
+        }
+    }
+
+  /* Last argument cannot be '-o' because gcc error will be raised that a
+     filename is missing after that option in that case.  */
+  i = -1;
+
+  /* If there was a valid '-o' option, parse the directory part of the path
+     and put it in the res parameter.  */
+  if ((i = gitbom_find_last_of ('/', path)) != -1)
+    {
+      gitbom_substr (&temp, 0, i, path);
+      gitbom_set_contents (res, temp, strlen (temp));
+    }
+  else
+    gitbom_set_contents (res, "", 0);
+
+  free (path);
+  free (temp);
+}
+
+/* Open all the directories from the path specified in the res_dir
+   parameter and put them in the gitbom_dirs_head list. Also create
+   the directories which do not already exist.  */
+
+static DIR *
+open_all_directories_in_path (const char *res_dir)
+{
+  char *path = (char *) xcalloc (1, sizeof (char));
+  char *dir_name = (char *) xcalloc (1, sizeof (char));
+
+  int old_p = 0, p = gitbom_find_char_from_pos (0, '/', res_dir);
+  int dfd, absolute = 0;
+  DIR *dir = NULL;
+
+  if (p == -1)
+    {
+      free (dir_name);
+      free (path);
+      return NULL;
+    }
+  /* If the res_dir is an absolute path.  */
+  else if (p == 0)
+    {
+      absolute = 1;
+      gitbom_append_to_string (&path, "/", strlen (path), strlen ("/"));
+      /* Opening a root directory because an absolute path is specified.  */
+      dir = opendir (path);
+      dfd = dirfd (dir);
+
+      gitbom_add_to_dirs (&dir);
+      p = p + 1;
+      old_p = p;
+
+      /* Path is of format "/<dir>" where dir does not exist. This point can be
+         reached only if <dir> could not be created in the root folder, so it is
+         considered as an illegal path.  */
+      if ((p = gitbom_find_char_from_pos (p, '/', res_dir)) == -1)
+        {
+	  free (dir_name);
+	  free (path);
+	  return NULL;
+	}
+
+      /* Process sequences of adjacent occurrences of character '/'.  */
+      while (old_p == p)
+        {
+          p = p + 1;
+          old_p = p;
+          p = gitbom_find_char_from_pos (p, '/', res_dir);
+        }
+
+      if (p == -1)
+        {
+	  free (dir_name);
+	  free (path);
+	  return NULL;
+	}
+    }
+
+  gitbom_substr (&dir_name, old_p, p - old_p, res_dir);
+  gitbom_append_to_string (&path, dir_name, strlen (path), strlen (dir_name));
+
+  if ((dir = opendir (path)) == NULL)
+    {
+      if (absolute)
+        mkdirat (dfd, dir_name, S_IRWXU);
+      else
+        mkdir (dir_name, S_IRWXU);
+      dir = opendir (path);
+    }
+
+  if (dir == NULL)
+    {
+      free (dir_name);
+      free (path);
+      return NULL;
+    }
+
+  dfd = dirfd (dir);
+
+  gitbom_add_to_dirs (&dir);
+  p = p + 1;
+  old_p = p;
+
+  while ((p = gitbom_find_char_from_pos (p, '/', res_dir)) != -1)
+    {
+      /* Process sequences of adjacent occurrences of character '/'.  */
+      while (old_p == p)
+        {
+          p = p + 1;
+          old_p = p;
+          p = gitbom_find_char_from_pos (p, '/', res_dir);
+        }
+
+      if (p == -1)
+        break;
+
+      gitbom_substr (&dir_name, old_p, p - old_p, res_dir);
+      gitbom_append_to_string (&path, "/", strlen (path), strlen ("/"));
+      gitbom_append_to_string (&path, dir_name, strlen (path),
+			       strlen (dir_name));
+
+      if ((dir = opendir (path)) == NULL)
+        {
+          mkdirat (dfd, dir_name, S_IRWXU);
+          dir = opendir (path);
+        }
+
+      if (dir == NULL)
+        {
+	  free (dir_name);
+	  free (path);
+	  return NULL;
+	}
+
+      dfd = dirfd (dir);
+
+      gitbom_add_to_dirs (&dir);
+      p = p + 1;
+      old_p = p;
+    }
+
+  if ((unsigned) old_p < strlen (res_dir))
+    {
+      gitbom_substr (&dir_name, old_p, strlen (res_dir) - old_p, res_dir);
+      gitbom_append_to_string (&path, "/", strlen (path), strlen ("/"));
+      gitbom_append_to_string (&path, dir_name, strlen (path),
+			       strlen (dir_name));
+
+      if ((dir = opendir (path)) == NULL)
+        {
+          mkdirat (dfd, dir_name, S_IRWXU);
+          dir = opendir (path);
+        }
+
+      gitbom_add_to_dirs (&dir);
+    }
+
+  free (dir_name);
+  free (path);
+  return dir;
+}
+
+/* Close all the directories from the gitbom_dirs_head list. This function
+   should be called after calling the function open_all_directories_in_path.  */
+
+static void
+close_all_directories_in_path (void)
+{
+  struct gitbom_dirs *dir = gitbom_dirs_head, *old = NULL;
+  while (dir != NULL)
+    {
+      closedir (dir->dir);
+      old = dir;
+      dir = dir->next;
+      free (old);
+    }
+
+  gitbom_dirs_head = NULL;
+  gitbom_dirs_tail = NULL;
+}
+
+/* Calculate the gitoid using the contents of the given file.  */
+
+static void
+calculate_sha1_gitbom (FILE* dep_file, unsigned char resblock[])
+{
+  fseek (dep_file, 0L, SEEK_END);
+  long file_size = ftell (dep_file);
+  fseek (dep_file, 0L, SEEK_SET);
+
+  /* This length should be enough for everything up to 64B, which should
+     cover long type.  */
+  char buff_for_file_size[200];
+  sprintf (buff_for_file_size, "%ld", file_size);
+
+  char *init_data = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&init_data, "blob ", strlen (init_data),
+			   strlen ("blob "));
+  gitbom_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
+			   strlen (buff_for_file_size));
+  gitbom_append_to_string (&init_data, "\0", strlen (init_data), 1);
+
+  char *file_contents = (char *) xcalloc (file_size, sizeof (char));
+  fread (file_contents, 1, file_size, dep_file);
+
+  /* Calculate the hash.  */
+  struct sha1_ctx ctx;
+
+  sha1_init_ctx (&ctx);
+
+  sha1_process_bytes (init_data, strlen (init_data) + 1, &ctx);
+  sha1_process_bytes (file_contents, file_size, &ctx);
+
+  sha1_finish_ctx (&ctx, resblock);
+
+  free (file_contents);
+  free (init_data);
+}
+
+/* Calculate the gitoid using the given contents.  */
+
+static void
+calculate_sha1_gitbom_with_contents (char *contents,
+				     unsigned char resblock[])
+{
+  long file_size = strlen (contents);
+
+  /* This length should be enough for everything up to 64B, which should
+     cover long type.  */
+  char buff_for_file_size[200];
+  sprintf (buff_for_file_size, "%ld", file_size);
+
+  char *init_data = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&init_data, "blob ", strlen (init_data),
+			   strlen ("blob "));
+  gitbom_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
+			   strlen (buff_for_file_size));
+  gitbom_append_to_string (&init_data, "\0", strlen (init_data), 1);
+
+  /* Calculate the hash.  */
+  struct sha1_ctx ctx;
+
+  sha1_init_ctx (&ctx);
+
+  sha1_process_bytes (init_data, strlen (init_data) + 1, &ctx);
+  sha1_process_bytes (contents, file_size, &ctx);
+
+  sha1_finish_ctx (&ctx, resblock);
+
+  free (init_data);
+}
+
+/* GitBOM dependency file struct which contains its gitoid and its filename.  */
+
+struct gitbom_deps
+{
+  struct gitbom_deps *next;
+  char *contents;
+  char *name;
+};
+
+static struct gitbom_deps *gitbom_deps_head, *gitbom_deps_tail;
+
+static void
+gitbom_add_to_deps (char *filename, char *file_contents,
+		    unsigned long file_contents_len)
+{
+  struct gitbom_deps *elem
+    = (struct gitbom_deps *) xmalloc (sizeof (*elem));
+  elem->name = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&elem->name, filename, strlen (elem->name),
+			   strlen (filename));
+  elem->contents = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&elem->contents, file_contents,
+			   strlen (elem->contents), file_contents_len);
+  elem->next = NULL;
+  if (gitbom_deps_head == NULL)
+    gitbom_deps_head = elem;
+  else
+    gitbom_deps_tail->next = elem;
+  gitbom_deps_tail = elem;
+}
+
+static void
+gitbom_clear_deps (void)
+{
+  struct gitbom_deps *dep = gitbom_deps_head, *old = NULL;
+  while (dep != NULL)
+    {
+      free (dep->name);
+      free (dep->contents);
+      old = dep;
+      dep = dep->next;
+      free (old);
+    }
+
+  gitbom_deps_head = NULL;
+  gitbom_deps_tail = NULL;
+}
+
+static bool
+gitbom_is_dep_present (const char *name)
+{
+  struct gitbom_deps *dep;
+  for (dep = gitbom_deps_head; dep != NULL; dep = dep->next)
+    if (strcmp (name, dep->name) == 0)
+      return true;
+
+  return false;
+}
+
+static void
+gitbom_sort (void)
+{
+  if (gitbom_deps_head == NULL || gitbom_deps_head->next == NULL)
+    return;
+
+  char *temp_name = (char *) xcalloc (1, sizeof (char));
+  char *temp_contents = (char *) xcalloc (1, sizeof (char));
+  struct gitbom_deps *dep1, *dep2, *curr;
+  for (dep1 = gitbom_deps_head; dep1 != NULL; dep1 = dep1->next)
+    {
+      curr = dep1;
+      for (dep2 = dep1->next; dep2 != NULL; dep2 = dep2->next)
+        if (strcmp (curr->contents, dep2->contents) > 0)
+          curr = dep2;
+
+      if (strcmp (curr->name, dep1->name) != 0)
+        {
+          gitbom_set_contents (&temp_name, dep1->name,
+			       strlen (dep1->name));
+          gitbom_set_contents (&temp_contents, dep1->contents,
+			       40);
+          gitbom_set_contents (&dep1->name, curr->name,
+			       strlen (curr->name));
+          gitbom_set_contents (&dep1->contents, curr->contents,
+			       40);
+          gitbom_set_contents (&curr->name, temp_name,
+			       strlen (temp_name));
+          gitbom_set_contents (&curr->contents, temp_contents,
+			       40);
+        }
+    }
+
+  free (temp_name);
+  free (temp_contents);
+}
+
+/* GitBOM ".note.gitbom" section struct which contains the filename of the
+   dependency and the contents of its ".note.gitbom" section.  */
+
+struct gitbom_bom_sections
+{
+  struct gitbom_bom_sections *next;
+  char *name;
+  char *contents;
+};
+
+struct gitbom_bom_sections *gitbom_bom_sections_head,
+			   *gitbom_bom_sections_tail;
+
+void
+gitbom_add_to_bom_sections (const char *filename, char *sec_contents,
+			    unsigned long sec_contents_len)
+{
+  struct gitbom_bom_sections *elem
+    = (struct gitbom_bom_sections *) xmalloc (sizeof (*elem));
+  elem->name = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&elem->name, filename, strlen (elem->name),
+			   strlen (filename));
+  elem->contents = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&elem->contents, sec_contents,
+			   strlen (elem->contents), sec_contents_len);
+  elem->next = NULL;
+  if (gitbom_bom_sections_head == NULL)
+    gitbom_bom_sections_head = elem;
+  else
+    gitbom_bom_sections_tail->next = elem;
+  gitbom_bom_sections_tail = elem;
+}
+
+static void
+gitbom_clear_bom_sections (void)
+{
+  struct gitbom_bom_sections *dep = gitbom_bom_sections_head, *old = NULL;
+  while (dep != NULL)
+    {
+      free (dep->name);
+      free (dep->contents);
+      old = dep;
+      dep = dep->next;
+      free (old);
+    }
+
+  gitbom_bom_sections_head = NULL;
+  gitbom_bom_sections_tail = NULL;
+}
+
+static char *
+gitbom_is_bom_section_present (const char *name)
+{
+  struct gitbom_bom_sections *bom;
+  for (bom = gitbom_bom_sections_head; bom != NULL; bom = bom->next)
+    if (strcmp (name, bom->name) == 0)
+      return bom->contents;
+
+  return NULL;
+}
+
+/* Calculate the gitoids of all the dependencies of the resulting executable
+   and create the GitBOM Document file using them. Then calculate the
+   gitoid of that file and name it with that gitoid in the format specified
+   by the GitBOM specification.  */
+
+static void
+write_sha1_gitbom (char **name, const char *result_dir)
+{
+  static const char *const lut = "0123456789abcdef";
+  char *new_file_contents = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&new_file_contents, "gitoid:blob:sha1\n",
+			   strlen (new_file_contents),
+			   strlen ("gitoid:blob:sha1\n"));
+  char *temp_file_contents = (char *) xcalloc (1, sizeof (char));
+  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
+  high_ch[1] = '\0';
+  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
+  low_ch[1] = '\0';
+
+  struct dependency_file *dep;
+  for (dep = dependency_files; dep != NULL; dep = dep->next)
+    {
+      if (gitbom_is_dep_present (dep->name))
+        continue;
+
+      FILE *dep_file_handle = fopen (dep->name, "rb");
+      unsigned char resblock[20];
+
+      calculate_sha1_gitbom (dep_file_handle, resblock);
+
+      fclose (dep_file_handle);
+
+      gitbom_set_contents (&temp_file_contents, "", 0);
+
+      for (unsigned i = 0; i != 20; i++)
+        {
+          high_ch[0] = lut[resblock[i] >> 4];
+          low_ch[0] = lut[resblock[i] & 15];
+          gitbom_append_to_string (&temp_file_contents, high_ch,
+				   i * 2, 2);
+          gitbom_append_to_string (&temp_file_contents, low_ch,
+				   i * 2 + 1, 2);
+        }
+
+      gitbom_add_to_deps (dep->name, temp_file_contents, 40);
+    }
+
+  gitbom_sort ();
+
+  unsigned current_length = strlen (new_file_contents);
+  struct gitbom_deps *dep_file;
+  for (dep_file = gitbom_deps_head; dep_file != NULL;
+       dep_file = dep_file->next)
+    {
+      gitbom_append_to_string (&new_file_contents, "blob ",
+			       current_length,
+			       strlen ("blob "));
+      current_length += strlen ("blob ");
+      gitbom_append_to_string (&new_file_contents, dep_file->contents,
+			       current_length,
+			       40);
+      current_length += 40;
+      char *bom_sec_contents = gitbom_is_bom_section_present (dep_file->name);
+      if (bom_sec_contents != NULL)
+        {
+          gitbom_append_to_string (&new_file_contents, " bom ",
+				   current_length,
+				   strlen (" bom "));
+          current_length += strlen (" bom ");
+	  gitbom_append_to_string (&new_file_contents, bom_sec_contents,
+				   current_length,
+				   40);
+          current_length += 40;
+        }
+      gitbom_append_to_string (&new_file_contents, "\n",
+			       current_length,
+			       strlen ("\n"));
+      current_length += strlen ("\n");
+    }
+  unsigned new_file_size = current_length;
+
+  gitbom_clear_deps ();
+  gitbom_clear_bom_sections ();
+
+  unsigned char resblock[20];
+  calculate_sha1_gitbom_with_contents (new_file_contents, resblock);
+
+  for (unsigned i = 0; i != 20; i++)
+    {
+      high_ch[0] = lut[resblock[i] >> 4];
+      low_ch[0] = lut[resblock[i] & 15];
+      gitbom_append_to_string (name, high_ch, i * 2, 2);
+      gitbom_append_to_string (name, low_ch, i * 2 + 1, 2);
+    }
+  free (low_ch);
+  free (high_ch);
+
+  char *path_gitbom = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&path_gitbom, ".gitbom", strlen (path_gitbom),
+			   strlen (".gitbom"));
+  DIR *dir_zero = NULL;
+
+  if (result_dir)
+    {
+      if ((dir_zero = opendir (result_dir)) == NULL)
+        {
+          mkdir (result_dir, S_IRWXU);
+	  dir_zero = opendir (result_dir);
+	}
+
+      if (dir_zero != NULL)
+        {
+          gitbom_add_prefix_to_string (&path_gitbom, "/");
+          gitbom_add_prefix_to_string (&path_gitbom, result_dir);
+          int dfd0 = dirfd (dir_zero);
+          mkdirat (dfd0, ".gitbom", S_IRWXU);
+        }
+      else if (strlen (result_dir) != 0)
+        {
+          DIR *final_dir = open_all_directories_in_path (result_dir);
+          /* If an error occurred, illegal path is detected and GitBOM information
+             is not written.  */
+          /* TODO: Maybe put a message here that a specified path, in which GitBOM
+             information should be stored, is illegal.  */
+          if (final_dir == NULL)
+            {
+              close_all_directories_in_path ();
+              free (path_gitbom);
+              free (temp_file_contents);
+              free (new_file_contents);
+              gitbom_set_contents (name, "", 0);
+              return;
+            }
+          else
+            {
+              gitbom_add_prefix_to_string (&path_gitbom, "/");
+	      gitbom_add_prefix_to_string (&path_gitbom, result_dir);
+              int dfd0 = dirfd (final_dir);
+              mkdirat (dfd0, ".gitbom", S_IRWXU);
+            }
+        }
+      else
+        mkdir (".gitbom", S_IRWXU);
+    }
+  /* Put the GitBOM Document file in the current working directory.  */
+  else
+    mkdir (".gitbom", S_IRWXU);
+
+  DIR *dir_one = opendir (path_gitbom);
+  if (dir_one == NULL)
+    {
+      close_all_directories_in_path ();
+      if (result_dir && dir_zero)
+        closedir (dir_zero);
+      free (path_gitbom);
+      free (temp_file_contents);
+      free (new_file_contents);
+      gitbom_set_contents (name, "", 0);
+      return;
+    }
+
+  int dfd1 = dirfd (dir_one);
+  mkdirat (dfd1, "objects", S_IRWXU);
+
+  char *path_objects = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&path_objects, path_gitbom, strlen (path_objects),
+			   strlen (path_gitbom));
+  gitbom_append_to_string (&path_objects, "/objects", strlen (path_objects),
+			   strlen ("/objects"));
+  DIR *dir_two = opendir (path_objects);
+  if (dir_two == NULL)
+    {
+      closedir (dir_one);
+      close_all_directories_in_path ();
+      if (result_dir && dir_zero)
+        closedir (dir_zero);
+      free (path_objects);
+      free (path_gitbom);
+      free (temp_file_contents);
+      free (new_file_contents);
+      gitbom_set_contents (name, "", 0);
+      return;
+    }
+
+  int dfd2 = dirfd (dir_two);
+  mkdirat (dfd2, "sha1", S_IRWXU);
+
+  char *path_sha1 = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&path_sha1, path_objects, strlen (path_sha1),
+			   strlen (path_objects));
+  gitbom_append_to_string (&path_sha1, "/sha1", strlen (path_sha1),
+			   strlen ("/sha1"));
+  DIR *dir_three = opendir (path_sha1);
+  if (dir_three == NULL)
+    {
+      closedir (dir_two);
+      closedir (dir_one);
+      close_all_directories_in_path ();
+      if (result_dir && dir_zero)
+        closedir (dir_zero);
+      free (path_sha1);
+      free (path_objects);
+      free (path_gitbom);
+      free (temp_file_contents);
+      free (new_file_contents);
+      gitbom_set_contents (name, "", 0);
+      return;
+    }
+
+  int dfd3 = dirfd (dir_three);
+  char *name_substr = (char *) xcalloc (1, sizeof (char));
+  gitbom_substr (&name_substr, 0, 2, *name);
+  mkdirat (dfd3, name_substr, S_IRWXU);
+
+  char *path_dir = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&path_dir, path_sha1, strlen (path_dir),
+			   strlen (path_sha1));
+  gitbom_append_to_string (&path_dir, "/", strlen (path_dir),
+			   strlen ("/"));
+
+  /* Save current length of path_dir before characters from hash are added to
+     the path. This is done because the calculation of the length of the path
+     from here moving forward is done manually by adding the length of the
+     following parts of the path since hash can produce '\0' characters, so
+     strlen is not good enough.  */
+  unsigned long path_dir_temp_len = strlen (path_dir);
+
+  gitbom_append_to_string (&path_dir, name_substr, path_dir_temp_len, 2);
+  DIR *dir_four = opendir (path_dir);
+  if (dir_four == NULL)
+    {
+      closedir (dir_three);
+      closedir (dir_two);
+      closedir (dir_one);
+      close_all_directories_in_path ();
+      if (result_dir && dir_zero)
+        closedir (dir_zero);
+      free (path_dir);
+      free (name_substr);
+      free (path_sha1);
+      free (path_objects);
+      free (path_gitbom);
+      free (temp_file_contents);
+      free (new_file_contents);
+      gitbom_set_contents (name, "", 0);
+      return;
+    }
+
+  char *new_file_path = (char *) xcalloc (1, sizeof (char));
+  gitbom_substr (&name_substr, 2, 38, *name);
+  gitbom_append_to_string (&new_file_path, path_dir, strlen (new_file_path),
+			   path_dir_temp_len + 2);
+  gitbom_append_to_string (&new_file_path, "/", path_dir_temp_len + 2,
+			   strlen ("/"));
+  gitbom_append_to_string (&new_file_path, name_substr,
+			   path_dir_temp_len + 2 + strlen ("/"), 38);
+
+  FILE *new_file = fopen (new_file_path, "w");
+
+  fwrite (new_file_contents, sizeof (char), new_file_size, new_file);
+
+  fclose (new_file);
+  closedir (dir_four);
+  closedir (dir_three);
+  closedir (dir_two);
+  closedir (dir_one);
+  close_all_directories_in_path ();
+  if (result_dir && dir_zero)
+    closedir (dir_zero);
+  free (new_file_path);
+  free (path_dir);
+  free (name_substr);
+  free (path_sha1);
+  free (path_objects);
+  free (path_gitbom);
+  free (temp_file_contents);
+  free (new_file_contents);
+}
+
 
 static void
 ld_cleanup (void)
@@ -533,6 +1357,52 @@ main (int argc, char **argv)
 
   if (config.dependency_file != NULL)
     write_dependency_file ();
+
+  /* If the calculation of the GitBOM information is enabled, do it here.
+     Also, determine the directory to store GitBOM files in this order of
+     precedence.
+	1. If GITBOM_DIR environment variable is set, use this location.
+	2. Use the directory name passed with --gitbom option.
+	3. Default is to write the GitBOM files in the same directory as the
+	   resulting executable.  */
+  if (config.gitbom_dir != NULL ||
+     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
+    {
+      char *gitbom_dir = (char *) xcalloc (1, sizeof (char));
+
+      const char *env_gitbom = getenv ("GITBOM_DIR");
+      if (env_gitbom != NULL)
+        gitbom_set_contents (&gitbom_dir, env_gitbom, strlen (env_gitbom));
+
+      if (strlen (gitbom_dir) == 0)
+        {
+          if (strlen (config.gitbom_dir) > 0)
+            gitbom_set_contents (&gitbom_dir, config.gitbom_dir,
+				 strlen (config.gitbom_dir));
+          else
+            {
+	      char *res = (char *) xcalloc (1, sizeof (char));
+
+              gitbom_get_destdir (getenv ("COLLECT_GCC_OPTIONS"), &res);
+              if (strlen (res) > 0)
+                gitbom_set_contents (&gitbom_dir, res, strlen (res));
+              else
+                gitbom_set_contents (&gitbom_dir, "", 0);
+
+	      free (res);
+            }
+        }
+
+      char *gitoid = (char *) xcalloc (1, sizeof (char));
+      if (strlen (gitbom_dir) > 0)
+        write_sha1_gitbom (&gitoid, gitbom_dir);
+      else
+        write_sha1_gitbom (&gitoid, NULL);
+
+      strncpy (ldelf_emit_note_gitbom, gitoid, 40);
+      free (gitoid);
+      free (gitbom_dir);
+    }
 
   /* Even if we're producing relocatable output, some non-fatal errors should
      be reported in the exit status.  (What non-fatal errors, if any, do we

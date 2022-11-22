@@ -909,6 +909,17 @@ linker, unlike ``system headers'' in the compiler).  So the output from
 installation where it was produced, and should not be copied into
 distributed makefiles without careful editing.
 
+@kindex --gitbom
+@kindex --gitbom=@var{directory}
+@item --gitbom
+@itemx --gitbom=@var{directory}
+Calculate the @code{GitBOM} information.  Use @var{directory} as the path
+to the directory in which @code{GitBOM} information should be stored.  This
+option has precedence over the default case (when @var{directory} is not
+specified), but lower priority compared to the @code{GITBOM_DIR}
+environment variable.  In the default case, @code{GitBOM} information is
+stored in the same directory as the resulting executable.
+
 @kindex -O @var{level}
 @cindex generating optimized output
 @item -O @var{level}

@@ -52,6 +52,9 @@ struct dt_needed
 /* Style of .note.gnu.build-id section.  */
 const char *ldelf_emit_note_gnu_build_id;
 
+/* Content of .note.gitbom section.  */
+char *ldelf_emit_note_gitbom;
+
 /* Content of .note.package section.  */
 const char *ldelf_emit_note_fdo_package_metadata;
 
@@ -1224,6 +1227,59 @@ ldelf_before_plugin_all_symbols_read (int use_libpath, int native,
   htab->handling_dt_needed = false;
 }
 
+/* This function returns a character which is the hexadecimal representation
+   of the decimal value of the character passed as an argument. If the
+   character argument has a decimal value which cannot be represented with a
+   single hexadecimal character, the same character is returned.  */
+
+static unsigned char
+get_hex (unsigned char c)
+{
+  if (c >= 10 && c <= 15)
+    c = c + 97 - 10;
+  else if (c <= 9)
+    c += 48;
+
+  return c;
+}
+
+/* This function converts an input character array into an array double its
+   size which consists of pairs of characters. Each pair corresponds to one
+   element of the input array (high 4b of that element represent the first
+   element in the pair in the output array, while low 4b represent the
+   second one). In addition, the characters in the pair are also
+   transformed so that they represent hex characters whose decimal value is
+   the value of the characters before the transformation.
+
+   Example:
+
+     Input array: 0b0110_1111  0b0000_1101  0b1010_1010  0b1001_0110
+
+	element     first_element_in_pair    second_element_in_pair
+      0b0110_1111          0b0110                   0b1111
+      0b0000_1101          0b0000                   0b1101
+      0b1010_1010          0b1010                   0b1010
+      0b1001_0110          0b1001                   0b0110
+
+     Output array: 6 f 0 d a a 9 6     (4 pairs of two hex characters)       */
+
+static void
+convert_ascii_decimal_to_ascii_hex (char *in_array, char *out_array,
+			            unsigned long in_array_len)
+{
+  for (unsigned i = 0; i != in_array_len; i++)
+    {
+      unsigned char c1 = (in_array[i] & 0xf0) >> 4;
+      unsigned char c2 = in_array[i] & 0x0f;
+
+      c1 = get_hex (c1);
+      c2 = get_hex (c2);
+
+      out_array[2 * i] = c1;
+      out_array[2 * i + 1] = c2;
+    }
+}
+
 /* This is called after all the input files have been opened and all
    symbols have been loaded.  */
 
@@ -1255,7 +1311,44 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
 	}
     }
 
+  for (abfd = link_info.input_bfds; abfd; abfd = abfd->link.next)
+    {
+      /* Discard input .note.gitbom sections.  */
+      s = bfd_get_section_by_name (abfd, ".note.gitbom");
+      if (s != NULL)
+        {
+          s->flags |= SEC_EXCLUDE;
+          if (config.gitbom_dir != NULL ||
+	     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
+	    {
+              char *sec_contents = (char *) xcalloc (40, sizeof (char));
+	      char *sec_contents_gitoid = (char *) xcalloc (20, sizeof (char));
+              char *sec_contents_fin = (char *) xcalloc (40 + 1, sizeof (char));
+              bfd_get_section_contents (abfd, s, sec_contents, 0, 40);
+              strncpy (sec_contents_gitoid, sec_contents + 20, 20);
+              convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid,
+						  sec_contents_fin,
+						  20);
+              sec_contents_fin[40] = '\0';
+              gitbom_add_to_bom_sections (bfd_get_filename (abfd),
+					  sec_contents_fin,
+				          40);
+              free (sec_contents_fin);
+              free (sec_contents_gitoid);
+              free (sec_contents);
+            }
+        }
+    }
+
+  /* If GITBOM_DIR environment variable is set, but --gitbom=[DIR] is not used,
+     ldelf_emit_note_gitbom is NULL.  Therefore, in that case, we can allocate
+     memory for it here.  */
+  if (ldelf_emit_note_gitbom == NULL &&
+     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
+    ldelf_emit_note_gitbom = (char *) xcalloc (40 + 1, sizeof (char));
+
   if (ldelf_emit_note_gnu_build_id != NULL
+      || ldelf_emit_note_gitbom != NULL
       || ldelf_emit_note_fdo_package_metadata != NULL)
     {
       /* Find an ELF input.  */
@@ -1274,6 +1367,14 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
 	{
 	  free ((char *) ldelf_emit_note_gnu_build_id);
 	  ldelf_emit_note_gnu_build_id = NULL;
+	}
+
+      if (abfd == NULL
+	  || (ldelf_emit_note_gitbom != NULL
+	      && !ldelf_setup_gitbom (abfd)))
+	{
+	  free (ldelf_emit_note_gitbom);
+	  ldelf_emit_note_gitbom = NULL;
 	}
 
       if (abfd == NULL
@@ -1514,6 +1615,137 @@ ldelf_setup_build_id (bfd *ibfd)
 
   einfo (_("%P: warning: cannot create .note.gnu.build-id section,"
 	   " --build-id ignored\n"));
+  return false;
+}
+
+/* This function returns a character which has a decimal value equal to
+   the integer value being represented by the hexadecimal character
+   passed as an argument.  */
+
+static unsigned char
+get_decimal (unsigned char c)
+{
+  if (c >= 'a' && c <= 'f')
+    c = c - 97 + 10;
+  else if (c >= 'A' && c <= 'F')
+    c = c - 65 + 10;
+  else if (c >= '0' && c <= '9')
+    c -= 48;
+
+  return c;
+}
+
+/* This function converts an input array which has to contain only hex
+   characters into an array with characters that have real decimal
+   values of those hex characters instead of their ASCII values.
+
+   Example: d b 1 4 8
+	element     decimal_value_of_element    decimal_value_of_new_element
+	   d                  100                           13
+	   b                   98                           11
+	   1                   49                            1
+	   4                   52                            4
+	   8                   56                            8                */
+
+static void
+convert_ascii_hex_to_ascii_decimal (const char *in_array, char *out_array,
+			            unsigned long in_array_len)
+{
+  for (unsigned i = 0; i != in_array_len / 2; i++)
+    {
+      unsigned char c1 = in_array[2 * i];
+      unsigned char c2 = in_array[2 * i + 1];
+
+      c1 = get_decimal (c1);
+      c2 = get_decimal (c2);
+
+      out_array[i] = c2 | c1 << 4;
+    }
+}
+
+static bool
+write_gitbom (bfd *abfd)
+{
+  struct elf_obj_tdata *t = elf_tdata (abfd);
+  char gitoid[20];
+  asection *asec;
+  Elf_Internal_Shdr *i_shdr;
+  unsigned char *contents, *gitbom_bits;
+  bfd_size_type size;
+  file_ptr position;
+  Elf_External_Note *e_note;
+
+  convert_ascii_hex_to_ascii_decimal (*(t->o->gitbom.gitoid), gitoid, 40);
+  asec = t->o->gitbom.sec;
+  if (bfd_is_abs_section (asec->output_section))
+    {
+      einfo (_("%P: warning: .note.gitbom section discarded,"
+	       " --gitbom ignored\n"));
+      return true;
+    }
+  i_shdr = &elf_section_data (asec->output_section)->this_hdr;
+
+  if (i_shdr->contents == NULL)
+    {
+      if (asec->contents == NULL)
+	asec->contents = (unsigned char *) xmalloc (asec->size);
+      contents = asec->contents;
+    }
+  else
+    contents = i_shdr->contents + asec->output_offset;
+
+  e_note = (Elf_External_Note *) contents;
+  size = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size = (size + 3) & -(bfd_size_type) 4;
+  gitbom_bits = contents + size;
+  size = asec->size - size;
+
+  /* Clear the gitoid field.  */
+  memset (gitbom_bits, 0, size);
+
+  bfd_h_put_32 (abfd, sizeof "GITBOM", &e_note->namesz);
+  bfd_h_put_32 (abfd, size, &e_note->descsz);
+  bfd_h_put_32 (abfd, NT_GITBOM_SHA1, &e_note->type);
+  memcpy (e_note->name, "GITBOM", sizeof "GITBOM");
+  memcpy (e_note->name + sizeof "GITBOM", "\0", 1);
+  memcpy (gitbom_bits, gitoid, 20);
+
+  position = i_shdr->sh_offset + asec->output_offset;
+  size = asec->size;
+  return (bfd_seek (abfd, position, SEEK_SET) == 0
+	  && bfd_bwrite (contents, size, abfd) == size);
+}
+
+/* Make .note.gitbom section.  */
+
+bool
+ldelf_setup_gitbom (bfd *ibfd)
+{
+  asection *s;
+  bfd_size_type size;
+  flagword flags;
+
+  size = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size = (size + 3) & -(bfd_size_type) 4;
+  size += 20;
+
+  flags = (SEC_ALLOC | SEC_LOAD | SEC_IN_MEMORY
+	   | SEC_LINKER_CREATED | SEC_READONLY | SEC_DATA);
+  s = bfd_make_section_anyway_with_flags (ibfd, ".note.gitbom",
+					  flags);
+  if (s != NULL && bfd_set_section_alignment (s, 2))
+    {
+      struct elf_obj_tdata *t = elf_tdata (link_info.output_bfd);
+      t->o->gitbom.after_write_object_contents = &write_gitbom;
+      t->o->gitbom.gitoid = &ldelf_emit_note_gitbom;
+      t->o->gitbom.sec = s;
+      elf_section_type (s) = SHT_NOTE;
+      s->size = size;
+      return true;
+    }
+
+  einfo (_("%P: warning: cannot create .note.gitbom section,"
+	   " --gitbom ignored\n"));
   return false;
 }
 

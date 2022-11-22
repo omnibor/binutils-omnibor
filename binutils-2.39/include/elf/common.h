@@ -796,6 +796,10 @@
 #define NT_ARCH		2		/* Contains an architecture string.  */
 #define NT_GO_BUILDID	4		/* Contains GO buildid data.  */
 
+/* Values for notes regarding GitBOM concept.  */
+
+#define NT_GITBOM_SHA1		1
+
 /* Values for notes in non-core files using name "GNU".  */
 
 #define NT_GNU_ABI_TAG		1
