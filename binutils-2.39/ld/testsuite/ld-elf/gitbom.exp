@@ -25,7 +25,7 @@ if ![is_elf_format] {
     return
 }
 
-proc check_gitbom_document_contents { gitbom_file test_name } {
+proc check_gitbom_document_contents_sha1 { gitbom_file test_name } {
     if [file exists $gitbom_file] then {
         set file_a [open $gitbom_file r]
     } else {
@@ -41,6 +41,30 @@ proc check_gitbom_document_contents { gitbom_file test_name } {
     close $file_a
 
     if { [regexp "^gitoid:blob:sha1 {blob d138dc90198e9370085e65f8bfec82d81e245c56}$" $list_a] } then {
+        pass $test_name
+    } else {
+        perror "$list_a"
+        fail $test_name
+    }
+    return 0
+}
+
+proc check_gitbom_document_contents_sha256 { gitbom_file test_name } {
+    if [file exists $gitbom_file] then {
+        set file_a [open $gitbom_file r]
+    } else {
+        perror "$gitbom_file doesn't exist"
+    }
+
+    set eof -1
+    set list_a {}
+
+    while { [gets $file_a line] != $eof } {
+        lappend list_a $line
+    }
+    close $file_a
+
+    if { [regexp "^gitoid:blob:sha256 {blob c3d71ad569a20d9c13a2fadcfce2c254d1a61151edd5e9958d5fdc238d431693}$" $list_a] } then {
         pass $test_name
     } else {
         perror "$list_a"
@@ -72,7 +96,9 @@ run_ld_link_tests [list \
     ] \
 ]
 
-check_gitbom_document_contents "env_dir/.gitbom/objects/sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "GitBOM Document file contents 1"
+check_gitbom_document_contents_sha1 "env_dir/.gitbom/objects/sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "GitBOM SHA1 Document file contents 1"
+
+check_gitbom_document_contents_sha256 "env_dir/.gitbom/objects/sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "GitBOM SHA256 Document file contents 1"
 
 unset env(GITBOM_DIR)
 
@@ -88,4 +114,6 @@ run_ld_link_tests [list \
     ] \
 ]
 
-check_gitbom_document_contents "dir/.gitbom/objects/sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "GitBOM Document file contents 2"
+check_gitbom_document_contents_sha1 "dir/.gitbom/objects/sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "GitBOM SHA1 Document file contents 2"
+
+check_gitbom_document_contents_sha256 "dir/.gitbom/objects/sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "GitBOM SHA256 Document file contents 2"

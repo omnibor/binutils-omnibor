@@ -799,6 +799,7 @@
 /* Values for notes regarding GitBOM concept.  */
 
 #define NT_GITBOM_SHA1		1
+#define NT_GITBOM_SHA256	2
 
 /* Values for notes in non-core files using name "GNU".  */
 

@@ -47,7 +47,11 @@
 #endif /* BFD_SUPPORTS_PLUGINS */
 
 #include "sha1.h"
+#include "sha256.h"
 #include <dirent.h>
+
+#define GITOID_LENGTH_SHA1 20
+#define GITOID_LENGTH_SHA256 32
 
 /* Somewhere above, sys/stat.h got included.  */
 #if !defined(S_ISDIR) && defined(S_IFDIR)
@@ -213,6 +217,9 @@ write_dependency_file (void)
   fclose (out);
 }
 
+/* GitBOM struct which contains the names of the directories from the path
+   to the directory where the GitBOM information is to be stored.  */
+
 struct gitbom_dirs
 {
   struct gitbom_dirs *next;
@@ -364,7 +371,7 @@ gitbom_get_destdir (const char *gcc_opts, char **res)
 }
 
 /* Open all the directories from the path specified in the res_dir
-   parameter and put them in the gitbom_dirs_head list. Also create
+   parameter and put them in the gitbom_dirs_head list.  Also create
    the directories which do not already exist.  */
 
 static DIR *
@@ -396,7 +403,7 @@ open_all_directories_in_path (const char *res_dir)
       p = p + 1;
       old_p = p;
 
-      /* Path is of format "/<dir>" where dir does not exist. This point can be
+      /* Path is of format "/<dir>" where dir does not exist.  This point can be
          reached only if <dir> could not be created in the root folder, so it is
          considered as an illegal path.  */
       if ((p = gitbom_find_char_from_pos (p, '/', res_dir)) == -1)
@@ -506,7 +513,7 @@ open_all_directories_in_path (const char *res_dir)
   return dir;
 }
 
-/* Close all the directories from the gitbom_dirs_head list. This function
+/* Close all the directories from the gitbom_dirs_head list.  This function
    should be called after calling the function open_all_directories_in_path.  */
 
 static void
@@ -525,7 +532,7 @@ close_all_directories_in_path (void)
   gitbom_dirs_tail = NULL;
 }
 
-/* Calculate the gitoid using the contents of the given file.  */
+/* Calculate the SHA1 gitoid using the contents of the given file.  */
 
 static void
 calculate_sha1_gitbom (FILE* dep_file, unsigned char resblock[])
@@ -563,7 +570,7 @@ calculate_sha1_gitbom (FILE* dep_file, unsigned char resblock[])
   free (init_data);
 }
 
-/* Calculate the gitoid using the given contents.  */
+/* Calculate the SHA1 gitoid using the given contents.  */
 
 static void
 calculate_sha1_gitbom_with_contents (char *contents,
@@ -596,29 +603,118 @@ calculate_sha1_gitbom_with_contents (char *contents,
   free (init_data);
 }
 
-/* GitBOM dependency file struct which contains its gitoid and its filename.  */
+/* Calculate the SHA256 gitoid using the contents of the given file.  */
+
+static void
+calculate_sha256_gitbom (FILE* dep_file, unsigned char resblock[])
+{
+  fseek (dep_file, 0L, SEEK_END);
+  long file_size = ftell (dep_file);
+  fseek (dep_file, 0L, SEEK_SET);
+
+  /* This length should be enough for everything up to 64B, which should
+     cover long type.  */
+  char buff_for_file_size[200];
+  sprintf (buff_for_file_size, "%ld", file_size);
+
+  char *init_data = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&init_data, "blob ", strlen (init_data),
+			   strlen ("blob "));
+  gitbom_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
+			   strlen (buff_for_file_size));
+  gitbom_append_to_string (&init_data, "\0", strlen (init_data), 1);
+
+  char *file_contents = (char *) xcalloc (file_size, sizeof (char));
+  fread (file_contents, 1, file_size, dep_file);
+
+  /* Calculate the hash.  */
+  struct sha256_ctx ctx;
+
+  sha256_init_ctx (&ctx);
+
+  sha256_process_bytes (init_data, strlen (init_data) + 1, &ctx);
+  sha256_process_bytes (file_contents, file_size, &ctx);
+
+  sha256_finish_ctx (&ctx, resblock);
+
+  free (file_contents);
+  free (init_data);
+}
+
+/* Calculate the SHA256 gitoid using the given contents.  */
+
+static void
+calculate_sha256_gitbom_with_contents (char *contents,
+				     unsigned char resblock[])
+{
+  long file_size = strlen (contents);
+
+  /* This length should be enough for everything up to 64B, which should
+     cover long type.  */
+  char buff_for_file_size[200];
+  sprintf (buff_for_file_size, "%ld", file_size);
+
+  char *init_data = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&init_data, "blob ", strlen (init_data),
+			   strlen ("blob "));
+  gitbom_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
+			   strlen (buff_for_file_size));
+  gitbom_append_to_string (&init_data, "\0", strlen (init_data), 1);
+
+  /* Calculate the hash.  */
+  struct sha256_ctx ctx;
+
+  sha256_init_ctx (&ctx);
+
+  sha256_process_bytes (init_data, strlen (init_data) + 1, &ctx);
+  sha256_process_bytes (contents, file_size, &ctx);
+
+  sha256_finish_ctx (&ctx, resblock);
+
+  free (init_data);
+}
+
+/* GitBOM dependency file struct which contains its SHA1 gitoid, its SHA256
+   gitoid and its filename.  */
 
 struct gitbom_deps
 {
   struct gitbom_deps *next;
-  char *contents;
+  char *sha1_contents;
+  char *sha256_contents;
   char *name;
 };
 
 static struct gitbom_deps *gitbom_deps_head, *gitbom_deps_tail;
 
 static void
-gitbom_add_to_deps (char *filename, char *file_contents,
-		    unsigned long file_contents_len)
+gitbom_add_to_deps (char *filename, char *sha1_contents, char *sha256_contents,
+		    unsigned long sha1_contents_len,
+		    unsigned long sha256_contents_len)
 {
   struct gitbom_deps *elem
     = (struct gitbom_deps *) xmalloc (sizeof (*elem));
   elem->name = (char *) xcalloc (1, sizeof (char));
   gitbom_append_to_string (&elem->name, filename, strlen (elem->name),
 			   strlen (filename));
-  elem->contents = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&elem->contents, file_contents,
-			   strlen (elem->contents), file_contents_len);
+  if (sha1_contents != NULL)
+    {
+      elem->sha1_contents = (char *) xcalloc (1, sizeof (char));
+      gitbom_append_to_string (&elem->sha1_contents, sha1_contents,
+			       strlen (elem->sha1_contents),
+			       sha1_contents_len);
+    }
+  else
+    elem->sha1_contents = NULL;
+  if (sha256_contents != NULL)
+    {
+      elem->sha256_contents = (char *) xcalloc (1, sizeof (char));
+      gitbom_append_to_string (&elem->sha256_contents, sha256_contents,
+			       strlen (elem->sha256_contents),
+			       sha256_contents_len);
+    }
+  else
+    elem->sha256_contents = NULL;
   elem->next = NULL;
   if (gitbom_deps_head == NULL)
     gitbom_deps_head = elem;
@@ -634,7 +730,10 @@ gitbom_clear_deps (void)
   while (dep != NULL)
     {
       free (dep->name);
-      free (dep->contents);
+      if (dep->sha1_contents)
+        free (dep->sha1_contents);
+      if (dep->sha256_contents)
+        free (dep->sha256_contents);
       old = dep;
       dep = dep->next;
       free (old);
@@ -644,79 +743,135 @@ gitbom_clear_deps (void)
   gitbom_deps_tail = NULL;
 }
 
-static bool
+static struct gitbom_deps *
 gitbom_is_dep_present (const char *name)
 {
   struct gitbom_deps *dep;
   for (dep = gitbom_deps_head; dep != NULL; dep = dep->next)
     if (strcmp (name, dep->name) == 0)
-      return true;
+      return dep;
 
-  return false;
+  return NULL;
 }
 
+/* Sort the contents of the GitBOM Document file using the selection sort
+   algorithm.  The parameter ind should be either 0 (sort the SHA1 GitBOM
+   Document file) or 1 (sort the SHA256 GitBOM Document file).  */
+
 static void
-gitbom_sort (void)
+gitbom_sort (unsigned int ind)
 {
-  if (gitbom_deps_head == NULL || gitbom_deps_head->next == NULL)
+  if (gitbom_deps_head == NULL || gitbom_deps_head->next == NULL
+      || (ind != 0 && ind != 1))
     return;
 
-  char *temp_name = (char *) xcalloc (1, sizeof (char));
-  char *temp_contents = (char *) xcalloc (1, sizeof (char));
   struct gitbom_deps *dep1, *dep2, *curr;
   for (dep1 = gitbom_deps_head; dep1 != NULL; dep1 = dep1->next)
     {
       curr = dep1;
       for (dep2 = dep1->next; dep2 != NULL; dep2 = dep2->next)
-        if (strcmp (curr->contents, dep2->contents) > 0)
-          curr = dep2;
+        {
+          if ((dep1->sha1_contents == NULL && dep2->sha1_contents != NULL)
+               || (dep1->sha1_contents != NULL && dep2->sha1_contents == NULL)
+               || (dep1->sha256_contents == NULL && dep2->sha256_contents != NULL)
+               || (dep1->sha256_contents != NULL && dep2->sha256_contents == NULL))
+            return;
+          if ((ind == 0 && strcmp (curr->sha1_contents, dep2->sha1_contents) > 0)
+               || (ind == 1
+		   && strcmp (curr->sha256_contents, dep2->sha256_contents) > 0))
+            curr = dep2;
+        }
 
       if (strcmp (curr->name, dep1->name) != 0)
         {
+	  char *temp_name = (char *) xcalloc (1, sizeof (char));
+	  char *temp_sha1_contents = NULL;
+	  if (dep1->sha1_contents != NULL)
+	    temp_sha1_contents = (char *) xcalloc (1, sizeof (char));
+	  char *temp_sha256_contents = NULL;
+	  if (dep1->sha256_contents != NULL)
+	    temp_sha256_contents = (char *) xcalloc (1, sizeof (char));
+
           gitbom_set_contents (&temp_name, dep1->name,
 			       strlen (dep1->name));
-          gitbom_set_contents (&temp_contents, dep1->contents,
-			       40);
+          if (dep1->sha1_contents != NULL)
+            gitbom_set_contents (&temp_sha1_contents, dep1->sha1_contents,
+			         2 * GITOID_LENGTH_SHA1);
+          if (dep1->sha256_contents != NULL)
+	    gitbom_set_contents (&temp_sha256_contents, dep1->sha256_contents,
+				 2 * GITOID_LENGTH_SHA256);
+
           gitbom_set_contents (&dep1->name, curr->name,
 			       strlen (curr->name));
-          gitbom_set_contents (&dep1->contents, curr->contents,
-			       40);
+          if (dep1->sha1_contents != NULL)
+	    gitbom_set_contents (&dep1->sha1_contents, curr->sha1_contents,
+				 2 * GITOID_LENGTH_SHA1);
+          if (dep1->sha256_contents != NULL)
+	    gitbom_set_contents (&dep1->sha256_contents, curr->sha256_contents,
+				 2 * GITOID_LENGTH_SHA256);
+
           gitbom_set_contents (&curr->name, temp_name,
 			       strlen (temp_name));
-          gitbom_set_contents (&curr->contents, temp_contents,
-			       40);
+          if (dep1->sha1_contents != NULL)
+	    gitbom_set_contents (&curr->sha1_contents, temp_sha1_contents,
+				 2 * GITOID_LENGTH_SHA1);
+          if (dep1->sha256_contents != NULL)
+	    gitbom_set_contents (&curr->sha256_contents, temp_sha256_contents,
+				 2 * GITOID_LENGTH_SHA256);
+
+	  if (dep1->sha256_contents != NULL)
+	    free (temp_sha256_contents);
+	  if (dep1->sha1_contents != NULL)
+	    free (temp_sha1_contents);
+	  free (temp_name);
         }
     }
-
-  free (temp_name);
-  free (temp_contents);
 }
 
 /* GitBOM ".note.gitbom" section struct which contains the filename of the
-   dependency and the contents of its ".note.gitbom" section.  */
+   dependency and the contents of its ".note.gitbom" section (the SHA1 gitoid
+   and the SHA256 gitoid).  */
 
 struct gitbom_bom_sections
 {
   struct gitbom_bom_sections *next;
   char *name;
-  char *contents;
+  char *sha1_contents;
+  char *sha256_contents;
 };
 
 struct gitbom_bom_sections *gitbom_bom_sections_head,
 			   *gitbom_bom_sections_tail;
 
 void
-gitbom_add_to_bom_sections (const char *filename, char *sec_contents,
-			    unsigned long sec_contents_len)
+gitbom_add_to_bom_sections (const char *filename, char *sha1_sec_contents,
+			    char *sha256_sec_contents,
+			    unsigned long sha1_sec_contents_len,
+			    unsigned long sha256_sec_contents_len)
 {
   struct gitbom_bom_sections *elem
     = (struct gitbom_bom_sections *) xmalloc (sizeof (*elem));
   elem->name = (char *) xcalloc (1, sizeof (char));
   gitbom_append_to_string (&elem->name, filename, strlen (elem->name),
 			   strlen (filename));
-  elem->contents = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&elem->contents, sec_contents,
-			   strlen (elem->contents), sec_contents_len);
+  if (sha1_sec_contents != NULL)
+    {
+      elem->sha1_contents = (char *) xcalloc (1, sizeof (char));
+      gitbom_append_to_string (&elem->sha1_contents, sha1_sec_contents,
+			       strlen (elem->sha1_contents),
+			       sha1_sec_contents_len);
+    }
+  else
+    elem->sha1_contents = NULL;
+  if (sha256_sec_contents != NULL)
+    {
+      elem->sha256_contents = (char *) xcalloc (1, sizeof (char));
+      gitbom_append_to_string (&elem->sha256_contents, sha256_sec_contents,
+			       strlen (elem->sha256_contents),
+			       sha256_sec_contents_len);
+    }
+  else
+    elem->sha256_contents = NULL;
   elem->next = NULL;
   if (gitbom_bom_sections_head == NULL)
     gitbom_bom_sections_head = elem;
@@ -732,7 +887,10 @@ gitbom_clear_bom_sections (void)
   while (dep != NULL)
     {
       free (dep->name);
-      free (dep->contents);
+      if (dep->sha1_contents)
+        free (dep->sha1_contents);
+      if (dep->sha256_contents)
+        free (dep->sha256_contents);
       old = dep;
       dep = dep->next;
       free (old);
@@ -742,113 +900,43 @@ gitbom_clear_bom_sections (void)
   gitbom_bom_sections_tail = NULL;
 }
 
+/* If the dependency with the given name is not in the gitbom_bom_sections_head
+   list, return NULL.  Otherwise, return the SHA1 gitoid (hash_func_type == 0)
+   or the SHA256 gitoid (hash_func_type == 1) for that dependency.  If any value
+   other than 0 or 1 is passed in hash_func_type, the behaviour is undefined.  */
+
 static char *
-gitbom_is_bom_section_present (const char *name)
+gitbom_is_bom_section_present (const char *name, unsigned hash_func_type)
 {
   struct gitbom_bom_sections *bom;
   for (bom = gitbom_bom_sections_head; bom != NULL; bom = bom->next)
     if (strcmp (name, bom->name) == 0)
-      return bom->contents;
+      {
+        if (hash_func_type == 0)
+          return bom->sha1_contents;
+        else if (hash_func_type == 1)
+          return bom->sha256_contents;
+        /* This point should never be reached.  */
+        else
+          return NULL;
+      }
 
   return NULL;
 }
 
-/* Calculate the gitoids of all the dependencies of the resulting executable
-   and create the GitBOM Document file using them. Then calculate the
-   gitoid of that file and name it with that gitoid in the format specified
-   by the GitBOM specification.  */
+/* Store the GitBOM information in the specified directory whose path is
+   written in the result_dir parameter.  If result_dir is NULL or an empty
+   string, the GitBOM information is stored in the current working directory.
+   The hash_size parameter has to be either GITOID_LENGTH_SHA1 (for SHA1 GitBOM
+   information) or GITOID_LENGTH_SHA256 (for SHA256 GitBOM information).  */
 
 static void
-write_sha1_gitbom (char **name, const char *result_dir)
+create_gitbom_document_file (char **name, const char *result_dir,
+			     char *new_file_contents, unsigned int new_file_size,
+			     unsigned int hash_size)
 {
-  static const char *const lut = "0123456789abcdef";
-  char *new_file_contents = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&new_file_contents, "gitoid:blob:sha1\n",
-			   strlen (new_file_contents),
-			   strlen ("gitoid:blob:sha1\n"));
-  char *temp_file_contents = (char *) xcalloc (1, sizeof (char));
-  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
-  high_ch[1] = '\0';
-  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
-  low_ch[1] = '\0';
-
-  struct dependency_file *dep;
-  for (dep = dependency_files; dep != NULL; dep = dep->next)
-    {
-      if (gitbom_is_dep_present (dep->name))
-        continue;
-
-      FILE *dep_file_handle = fopen (dep->name, "rb");
-      unsigned char resblock[20];
-
-      calculate_sha1_gitbom (dep_file_handle, resblock);
-
-      fclose (dep_file_handle);
-
-      gitbom_set_contents (&temp_file_contents, "", 0);
-
-      for (unsigned i = 0; i != 20; i++)
-        {
-          high_ch[0] = lut[resblock[i] >> 4];
-          low_ch[0] = lut[resblock[i] & 15];
-          gitbom_append_to_string (&temp_file_contents, high_ch,
-				   i * 2, 2);
-          gitbom_append_to_string (&temp_file_contents, low_ch,
-				   i * 2 + 1, 2);
-        }
-
-      gitbom_add_to_deps (dep->name, temp_file_contents, 40);
-    }
-
-  gitbom_sort ();
-
-  unsigned current_length = strlen (new_file_contents);
-  struct gitbom_deps *dep_file;
-  for (dep_file = gitbom_deps_head; dep_file != NULL;
-       dep_file = dep_file->next)
-    {
-      gitbom_append_to_string (&new_file_contents, "blob ",
-			       current_length,
-			       strlen ("blob "));
-      current_length += strlen ("blob ");
-      gitbom_append_to_string (&new_file_contents, dep_file->contents,
-			       current_length,
-			       40);
-      current_length += 40;
-      char *bom_sec_contents = gitbom_is_bom_section_present (dep_file->name);
-      if (bom_sec_contents != NULL)
-        {
-          gitbom_append_to_string (&new_file_contents, " bom ",
-				   current_length,
-				   strlen (" bom "));
-          current_length += strlen (" bom ");
-	  gitbom_append_to_string (&new_file_contents, bom_sec_contents,
-				   current_length,
-				   40);
-          current_length += 40;
-        }
-      gitbom_append_to_string (&new_file_contents, "\n",
-			       current_length,
-			       strlen ("\n"));
-      current_length += strlen ("\n");
-    }
-  unsigned new_file_size = current_length;
-
-  gitbom_clear_deps ();
-  gitbom_clear_bom_sections ();
-
-  unsigned char resblock[20];
-  calculate_sha1_gitbom_with_contents (new_file_contents, resblock);
-
-  for (unsigned i = 0; i != 20; i++)
-    {
-      high_ch[0] = lut[resblock[i] >> 4];
-      low_ch[0] = lut[resblock[i] & 15];
-      gitbom_append_to_string (name, high_ch, i * 2, 2);
-      gitbom_append_to_string (name, low_ch, i * 2 + 1, 2);
-    }
-  free (low_ch);
-  free (high_ch);
+  if (hash_size != GITOID_LENGTH_SHA1 && hash_size != GITOID_LENGTH_SHA256)
+    return;
 
   char *path_gitbom = (char *) xcalloc (1, sizeof (char));
   gitbom_append_to_string (&path_gitbom, ".gitbom", strlen (path_gitbom),
@@ -873,16 +961,14 @@ write_sha1_gitbom (char **name, const char *result_dir)
       else if (strlen (result_dir) != 0)
         {
           DIR *final_dir = open_all_directories_in_path (result_dir);
-          /* If an error occurred, illegal path is detected and GitBOM information
-             is not written.  */
+          /* If an error occurred, illegal path is detected and the GitBOM
+             information is not written.  */
           /* TODO: Maybe put a message here that a specified path, in which GitBOM
              information should be stored, is illegal.  */
           if (final_dir == NULL)
             {
               close_all_directories_in_path ();
               free (path_gitbom);
-              free (temp_file_contents);
-              free (new_file_contents);
               gitbom_set_contents (name, "", 0);
               return;
             }
@@ -908,8 +994,6 @@ write_sha1_gitbom (char **name, const char *result_dir)
       if (result_dir && dir_zero)
         closedir (dir_zero);
       free (path_gitbom);
-      free (temp_file_contents);
-      free (new_file_contents);
       gitbom_set_contents (name, "", 0);
       return;
     }
@@ -931,35 +1015,61 @@ write_sha1_gitbom (char **name, const char *result_dir)
         closedir (dir_zero);
       free (path_objects);
       free (path_gitbom);
-      free (temp_file_contents);
-      free (new_file_contents);
       gitbom_set_contents (name, "", 0);
       return;
     }
 
   int dfd2 = dirfd (dir_two);
-  mkdirat (dfd2, "sha1", S_IRWXU);
 
-  char *path_sha1 = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&path_sha1, path_objects, strlen (path_sha1),
-			   strlen (path_objects));
-  gitbom_append_to_string (&path_sha1, "/sha1", strlen (path_sha1),
-			   strlen ("/sha1"));
-  DIR *dir_three = opendir (path_sha1);
-  if (dir_three == NULL)
+  char *path_sha = NULL;
+  DIR *dir_three = NULL;
+  if (hash_size == GITOID_LENGTH_SHA1)
     {
-      closedir (dir_two);
-      closedir (dir_one);
-      close_all_directories_in_path ();
-      if (result_dir && dir_zero)
-        closedir (dir_zero);
-      free (path_sha1);
-      free (path_objects);
-      free (path_gitbom);
-      free (temp_file_contents);
-      free (new_file_contents);
-      gitbom_set_contents (name, "", 0);
-      return;
+      mkdirat (dfd2, "sha1", S_IRWXU);
+
+      path_sha = (char *) xcalloc (1, sizeof (char));
+      gitbom_append_to_string (&path_sha, path_objects, strlen (path_sha),
+			       strlen (path_objects));
+      gitbom_append_to_string (&path_sha, "/sha1", strlen (path_sha),
+			       strlen ("/sha1"));
+      dir_three = opendir (path_sha);
+      if (dir_three == NULL)
+        {
+          closedir (dir_two);
+          closedir (dir_one);
+          close_all_directories_in_path ();
+          if (result_dir && dir_zero)
+            closedir (dir_zero);
+          free (path_sha);
+          free (path_objects);
+          free (path_gitbom);
+          gitbom_set_contents (name, "", 0);
+          return;
+        }
+    }
+  else
+    {
+      mkdirat (dfd2, "sha256", S_IRWXU);
+
+      path_sha = (char *) xcalloc (1, sizeof (char));
+      gitbom_append_to_string (&path_sha, path_objects, strlen (path_sha),
+			       strlen (path_objects));
+      gitbom_append_to_string (&path_sha, "/sha256", strlen (path_sha),
+			       strlen ("/sha256"));
+      dir_three = opendir (path_sha);
+      if (dir_three == NULL)
+        {
+          closedir (dir_two);
+          closedir (dir_one);
+          close_all_directories_in_path ();
+          if (result_dir && dir_zero)
+            closedir (dir_zero);
+          free (path_sha);
+          free (path_objects);
+          free (path_gitbom);
+          gitbom_set_contents (name, "", 0);
+          return;
+        }
     }
 
   int dfd3 = dirfd (dir_three);
@@ -968,13 +1078,13 @@ write_sha1_gitbom (char **name, const char *result_dir)
   mkdirat (dfd3, name_substr, S_IRWXU);
 
   char *path_dir = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&path_dir, path_sha1, strlen (path_dir),
-			   strlen (path_sha1));
+  gitbom_append_to_string (&path_dir, path_sha, strlen (path_dir),
+			   strlen (path_sha));
   gitbom_append_to_string (&path_dir, "/", strlen (path_dir),
 			   strlen ("/"));
 
   /* Save current length of path_dir before characters from hash are added to
-     the path. This is done because the calculation of the length of the path
+     the path.  This is done because the calculation of the length of the path
      from here moving forward is done manually by adding the length of the
      following parts of the path since hash can produce '\0' characters, so
      strlen is not good enough.  */
@@ -992,23 +1102,22 @@ write_sha1_gitbom (char **name, const char *result_dir)
         closedir (dir_zero);
       free (path_dir);
       free (name_substr);
-      free (path_sha1);
+      free (path_sha);
       free (path_objects);
       free (path_gitbom);
-      free (temp_file_contents);
-      free (new_file_contents);
       gitbom_set_contents (name, "", 0);
       return;
     }
 
   char *new_file_path = (char *) xcalloc (1, sizeof (char));
-  gitbom_substr (&name_substr, 2, 38, *name);
+  gitbom_substr (&name_substr, 2, 2 * hash_size - 2, *name);
   gitbom_append_to_string (&new_file_path, path_dir, strlen (new_file_path),
 			   path_dir_temp_len + 2);
   gitbom_append_to_string (&new_file_path, "/", path_dir_temp_len + 2,
 			   strlen ("/"));
   gitbom_append_to_string (&new_file_path, name_substr,
-			   path_dir_temp_len + 2 + strlen ("/"), 38);
+			   path_dir_temp_len + 2 + strlen ("/"),
+			   2 * hash_size - 2);
 
   FILE *new_file = fopen (new_file_path, "w");
 
@@ -1025,9 +1134,237 @@ write_sha1_gitbom (char **name, const char *result_dir)
   free (new_file_path);
   free (path_dir);
   free (name_substr);
-  free (path_sha1);
+  free (path_sha);
   free (path_objects);
   free (path_gitbom);
+}
+
+/* Calculate the gitoids of all the dependencies of the resulting executable
+   and create the GitBOM Document file using them.  Then calculate the
+   gitoid of that file and name it with that gitoid in the format specified
+   by the GitBOM specification.  Use SHA1 hashing algorithm for calculating
+   all the gitoids.  */
+
+static void
+write_sha1_gitbom (char **name, const char *result_dir)
+{
+  static const char *const lut = "0123456789abcdef";
+  char *new_file_contents = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&new_file_contents, "gitoid:blob:sha1\n",
+			   strlen (new_file_contents),
+			   strlen ("gitoid:blob:sha1\n"));
+  char *temp_file_contents = (char *) xcalloc (1, sizeof (char));
+  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
+  high_ch[1] = '\0';
+  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
+  low_ch[1] = '\0';
+
+  struct gitbom_deps *curr_dep = NULL;
+  struct dependency_file *dep;
+  for (dep = dependency_files; dep != NULL; dep = dep->next)
+    {
+      if ((curr_dep = gitbom_is_dep_present (dep->name)) != NULL)
+	if (curr_dep->sha1_contents != NULL)
+	  continue;
+
+      FILE *dep_file_handle = fopen (dep->name, "rb");
+      unsigned char resblock[GITOID_LENGTH_SHA1];
+
+      calculate_sha1_gitbom (dep_file_handle, resblock);
+
+      fclose (dep_file_handle);
+
+      gitbom_set_contents (&temp_file_contents, "", 0);
+
+      for (unsigned i = 0; i != GITOID_LENGTH_SHA1; i++)
+        {
+          high_ch[0] = lut[resblock[i] >> 4];
+          low_ch[0] = lut[resblock[i] & 15];
+          gitbom_append_to_string (&temp_file_contents, high_ch,
+				   i * 2, 2);
+          gitbom_append_to_string (&temp_file_contents, low_ch,
+				   i * 2 + 1, 2);
+        }
+
+      if (curr_dep == NULL)
+        gitbom_add_to_deps (dep->name, temp_file_contents, NULL,
+			    2 * GITOID_LENGTH_SHA1, 0);
+      /* Here curr_dep->sha1_contents has to be NULL.  */
+      else
+        {
+          curr_dep->sha1_contents = (char *) xcalloc (1, sizeof (char));
+	  gitbom_append_to_string (&curr_dep->sha1_contents,
+				   temp_file_contents,
+				   strlen (curr_dep->sha1_contents),
+				   2 * GITOID_LENGTH_SHA1);
+        }
+    }
+
+  gitbom_sort (0);
+
+  unsigned current_length = strlen (new_file_contents);
+  struct gitbom_deps *dep_file;
+  for (dep_file = gitbom_deps_head; dep_file != NULL;
+       dep_file = dep_file->next)
+    {
+      gitbom_append_to_string (&new_file_contents, "blob ",
+			       current_length,
+			       strlen ("blob "));
+      current_length += strlen ("blob ");
+      gitbom_append_to_string (&new_file_contents, dep_file->sha1_contents,
+			       current_length,
+			       2 * GITOID_LENGTH_SHA1);
+      current_length += 2 * GITOID_LENGTH_SHA1;
+      char *bom_sec_contents = gitbom_is_bom_section_present (dep_file->name, 0);
+      if (bom_sec_contents != NULL)
+        {
+          gitbom_append_to_string (&new_file_contents, " bom ",
+				   current_length,
+				   strlen (" bom "));
+          current_length += strlen (" bom ");
+	  gitbom_append_to_string (&new_file_contents, bom_sec_contents,
+				   current_length,
+				   2 * GITOID_LENGTH_SHA1);
+          current_length += 2 * GITOID_LENGTH_SHA1;
+        }
+      gitbom_append_to_string (&new_file_contents, "\n",
+			       current_length,
+			       strlen ("\n"));
+      current_length += strlen ("\n");
+    }
+  unsigned new_file_size = current_length;
+
+  unsigned char resblock[GITOID_LENGTH_SHA1];
+  calculate_sha1_gitbom_with_contents (new_file_contents, resblock);
+
+  for (unsigned i = 0; i != GITOID_LENGTH_SHA1; i++)
+    {
+      high_ch[0] = lut[resblock[i] >> 4];
+      low_ch[0] = lut[resblock[i] & 15];
+      gitbom_append_to_string (name, high_ch, i * 2, 2);
+      gitbom_append_to_string (name, low_ch, i * 2 + 1, 2);
+    }
+  free (low_ch);
+  free (high_ch);
+
+  create_gitbom_document_file (name, result_dir, new_file_contents,
+			       new_file_size, GITOID_LENGTH_SHA1);
+
+  free (temp_file_contents);
+  free (new_file_contents);
+}
+
+/* Calculate the gitoids of all the dependencies of the resulting executable
+   and create the GitBOM Document file using them.  Then calculate the
+   gitoid of that file and name it with that gitoid in the format specified
+   by the GitBOM specification.  Use SHA256 hashing algorithm for calculating
+   all the gitoids.  */
+
+static void
+write_sha256_gitbom (char **name, const char *result_dir)
+{
+  static const char *const lut = "0123456789abcdef";
+  char *new_file_contents = (char *) xcalloc (1, sizeof (char));
+  gitbom_append_to_string (&new_file_contents, "gitoid:blob:sha256\n",
+			   strlen (new_file_contents),
+			   strlen ("gitoid:blob:sha256\n"));
+  char *temp_file_contents = (char *) xcalloc (1, sizeof (char));
+  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
+  high_ch[1] = '\0';
+  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
+  low_ch[1] = '\0';
+
+  struct gitbom_deps *curr_dep = NULL;
+  struct dependency_file *dep;
+  for (dep = dependency_files; dep != NULL; dep = dep->next)
+    {
+      if ((curr_dep = gitbom_is_dep_present (dep->name)) != NULL)
+	if (curr_dep->sha256_contents != NULL)
+	  continue;
+
+      FILE *dep_file_handle = fopen (dep->name, "rb");
+      unsigned char resblock[GITOID_LENGTH_SHA256];
+
+      calculate_sha256_gitbom (dep_file_handle, resblock);
+
+      fclose (dep_file_handle);
+
+      gitbom_set_contents (&temp_file_contents, "", 0);
+
+      for (unsigned i = 0; i != GITOID_LENGTH_SHA256; i++)
+        {
+          high_ch[0] = lut[resblock[i] >> 4];
+          low_ch[0] = lut[resblock[i] & 15];
+          gitbom_append_to_string (&temp_file_contents, high_ch,
+				   i * 2, 2);
+          gitbom_append_to_string (&temp_file_contents, low_ch,
+				   i * 2 + 1, 2);
+        }
+
+      if (curr_dep == NULL)
+        gitbom_add_to_deps (dep->name, NULL, temp_file_contents,
+			    0, 2 * GITOID_LENGTH_SHA256);
+      /* Here curr_dep->sha256_contents has to be NULL.  */
+      else
+        {
+          curr_dep->sha256_contents = (char *) xcalloc (1, sizeof (char));
+	  gitbom_append_to_string (&curr_dep->sha256_contents,
+				   temp_file_contents,
+				   strlen (curr_dep->sha256_contents),
+				   2 * GITOID_LENGTH_SHA256);
+        }
+    }
+
+  gitbom_sort (1);
+
+  unsigned current_length = strlen (new_file_contents);
+  struct gitbom_deps *dep_file;
+  for (dep_file = gitbom_deps_head; dep_file != NULL;
+       dep_file = dep_file->next)
+    {
+      gitbom_append_to_string (&new_file_contents, "blob ",
+			       current_length,
+			       strlen ("blob "));
+      current_length += strlen ("blob ");
+      gitbom_append_to_string (&new_file_contents, dep_file->sha256_contents,
+			       current_length,
+			       2 * GITOID_LENGTH_SHA256);
+      current_length += 2 * GITOID_LENGTH_SHA256;
+      char *bom_sec_contents = gitbom_is_bom_section_present (dep_file->name, 1);
+      if (bom_sec_contents != NULL)
+        {
+          gitbom_append_to_string (&new_file_contents, " bom ",
+				   current_length,
+				   strlen (" bom "));
+          current_length += strlen (" bom ");
+	  gitbom_append_to_string (&new_file_contents, bom_sec_contents,
+				   current_length,
+				   2 * GITOID_LENGTH_SHA256);
+          current_length += 2 * GITOID_LENGTH_SHA256;
+        }
+      gitbom_append_to_string (&new_file_contents, "\n",
+			       current_length,
+			       strlen ("\n"));
+      current_length += strlen ("\n");
+    }
+  unsigned new_file_size = current_length;
+
+  unsigned char resblock[GITOID_LENGTH_SHA256];
+  calculate_sha256_gitbom_with_contents (new_file_contents, resblock);
+
+  for (unsigned i = 0; i != GITOID_LENGTH_SHA256; i++)
+    {
+      high_ch[0] = lut[resblock[i] >> 4];
+      low_ch[0] = lut[resblock[i] & 15];
+      gitbom_append_to_string (name, high_ch, i * 2, 2);
+      gitbom_append_to_string (name, low_ch, i * 2 + 1, 2);
+    }
+  free (low_ch);
+  free (high_ch);
+
+  create_gitbom_document_file (name, result_dir, new_file_contents,
+			       new_file_size, GITOID_LENGTH_SHA256);
+
   free (temp_file_contents);
   free (new_file_contents);
 }
@@ -1359,7 +1696,7 @@ main (int argc, char **argv)
     write_dependency_file ();
 
   /* If the calculation of the GitBOM information is enabled, do it here.
-     Also, determine the directory to store GitBOM files in this order of
+     Also, determine the directory to store the GitBOM files in this order of
      precedence.
 	1. If GITBOM_DIR environment variable is set, use this location.
 	2. Use the directory name passed with --gitbom option.
@@ -1393,14 +1730,28 @@ main (int argc, char **argv)
             }
         }
 
-      char *gitoid = (char *) xcalloc (1, sizeof (char));
+      char *gitoid_sha1 = (char *) xcalloc (1, sizeof (char));
+      char *gitoid_sha256 = (char *) xcalloc (1, sizeof (char));
       if (strlen (gitbom_dir) > 0)
-        write_sha1_gitbom (&gitoid, gitbom_dir);
+        {
+          write_sha1_gitbom (&gitoid_sha1, gitbom_dir);
+          write_sha256_gitbom (&gitoid_sha256, gitbom_dir);
+        }
       else
-        write_sha1_gitbom (&gitoid, NULL);
+        {
+          write_sha1_gitbom (&gitoid_sha1, NULL);
+          write_sha256_gitbom (&gitoid_sha256, gitbom_dir);
+        }
 
-      strncpy (ldelf_emit_note_gitbom, gitoid, 40);
-      free (gitoid);
+      gitbom_clear_deps ();
+      gitbom_clear_bom_sections ();
+
+      strncpy (ldelf_emit_note_gitbom_sha1, gitoid_sha1, 2 * GITOID_LENGTH_SHA1);
+      strncpy (ldelf_emit_note_gitbom_sha256, gitoid_sha256,
+	       2 * GITOID_LENGTH_SHA256);
+
+      free (gitoid_sha256);
+      free (gitoid_sha1);
       free (gitbom_dir);
     }
 
