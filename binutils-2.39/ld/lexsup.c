@@ -41,6 +41,7 @@
 #include "ldver.h"
 #include "ldemul.h"
 #include "demangle.h"
+#include "ldelf.h"
 #if BFD_SUPPORTS_PLUGINS
 #include "plugin.h"
 #endif /* BFD_SUPPORTS_PLUGINS */
@@ -145,6 +146,8 @@ static const struct ld_option ld_options[] =
   { {"gpsize", required_argument, NULL, 'G'},
     'G', N_("SIZE"), N_("Small data size (if no size, same as --shared)"),
     TWO_DASHES },
+  { {"gitbom", optional_argument, NULL, OPTION_GITBOM},
+    '\0', N_("DIRECTORY"), N_("Calculate GitBOM information"), TWO_DASHES },
   { {"soname", required_argument, NULL, OPTION_SONAME},
     'h', N_("FILENAME"), N_("Set internal name of shared library"), ONE_DASH },
   { {"dynamic-linker", required_argument, NULL, OPTION_DYNAMIC_LINKER},
@@ -1741,6 +1744,14 @@ parse_args (unsigned argc, char **argv)
 	    config.ctf_share_duplicated = true;
 	  else
 	    einfo (_("%F%P: bad --ctf-share-types option: %s\n"), optarg);
+	  break;
+
+	case OPTION_GITBOM:
+	  ldelf_emit_note_gitbom = (char *) xcalloc (40 + 1, sizeof (char));
+	  if (optarg != NULL)
+	    config.gitbom_dir = optarg;
+	  else
+	    config.gitbom_dir = "";
 	  break;
 	}
     }

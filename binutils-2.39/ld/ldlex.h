@@ -168,6 +168,7 @@ enum option_values
   OPTION_NO_WARN_EXECSTACK,
   OPTION_WARN_RWX_SEGMENTS,
   OPTION_NO_WARN_RWX_SEGMENTS,
+  OPTION_GITBOM,
 };
 
 /* The initial parser states.  */

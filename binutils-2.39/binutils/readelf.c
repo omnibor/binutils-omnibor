@@ -20291,6 +20291,19 @@ print_gnu_note (Filedata * filedata, Elf_Internal_Note *pnote)
   return true;
 }
 
+static bool
+print_gitbom_note (Elf_Internal_Note *pnote)
+{
+  unsigned long i;
+
+  printf (_("    SHA1 GitOID: "));
+  for (i = 0; i < pnote->descsz; ++i)
+    printf ("%02x", pnote->descdata[i] & 0xff);
+  printf ("\n");
+
+  return true;
+}
+
 static const char *
 get_v850_elf_note_type (enum v850_notes n_type)
 {
@@ -21502,6 +21515,10 @@ process_note (Elf_Internal_Note *  pnote,
     /* GNU-specific object file notes.  */
     nt = get_gnu_elf_note_type (pnote->type);
 
+  else if (startswith (pnote->namedata, "GITBOM"))
+    /* GitBOM-specific object file notes.  */
+    nt = _("NT_GITBOM (SHA1 GITOID)");
+
   else if (startswith (pnote->namedata, "AMDGPU"))
     /* AMDGPU-specific object file notes.  */
     nt = get_amdgpu_elf_note_type (pnote->type);
@@ -21565,6 +21582,8 @@ process_note (Elf_Internal_Note *  pnote,
     return print_ia64_vms_note (pnote);
   else if (startswith (pnote->namedata, "GNU"))
     return print_gnu_note (filedata, pnote);
+  else if (startswith (pnote->namedata, "GITBOM"))
+    return print_gitbom_note (pnote);
   else if (startswith (pnote->namedata, "stapsdt"))
     return print_stapsdt_note (pnote);
   else if (startswith (pnote->namedata, "CORE"))

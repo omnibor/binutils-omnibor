@@ -1,0 +1,91 @@
+# Expect script for GitBOM calculation tests.
+#   Copyright (C) 2021-2022 Free Software Foundation, Inc.
+#
+# This file is part of the GNU Binutils.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
+# MA 02110-1301, USA.
+#
+
+# Exclude non-ELF targets.
+
+if ![is_elf_format] {
+    return
+}
+
+proc check_gitbom_document_contents { gitbom_file test_name } {
+    if [file exists $gitbom_file] then {
+        set file_a [open $gitbom_file r]
+    } else {
+        perror "$gitbom_file doesn't exist"
+    }
+
+    set eof -1
+    set list_a {}
+
+    while { [gets $file_a line] != $eof } {
+        lappend list_a $line
+    }
+    close $file_a
+
+    if { [regexp "^gitoid:blob:sha1 {blob d138dc90198e9370085e65f8bfec82d81e245c56}$" $list_a] } then {
+        pass $test_name
+    } else {
+        perror "$list_a"
+        fail $test_name
+    }
+    return 0
+}
+
+set env(GITBOM_DIR) "env_dir"
+
+run_ld_link_tests [list \
+    [list \
+	"GitBOM calculation with GITBOM_DIR and --gitbom" \
+	"-r --gitbom" \
+	"" \
+	"" \
+	{dummy.s} \
+	{{readelf {--notes} gitbom.rd}} \
+	"gitbom1.o" \
+    ] \
+    [list \
+	"GitBOM calculation with GITBOM_DIR" \
+	"-r" \
+	"" \
+	"" \
+	{dummy.s} \
+	{{readelf {--notes} gitbom.rd}} \
+	"gitbom2.o" \
+    ] \
+]
+
+check_gitbom_document_contents "env_dir/.gitbom/objects/sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "GitBOM Document file contents 1"
+
+unset env(GITBOM_DIR)
+
+run_ld_link_tests [list \
+    [list \
+	"GitBOM calculation with --gitbom" \
+	"-r --gitbom=dir" \
+	"" \
+	"" \
+	{dummy.s} \
+	{{readelf {--notes} gitbom.rd}} \
+	"gitbom3.o" \
+    ] \
+]
+
+check_gitbom_document_contents "dir/.gitbom/objects/sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "GitBOM Document file contents 2"
