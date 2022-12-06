@@ -59,6 +59,9 @@
 #define	S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
 #endif
 
+#define GITOID_LENGTH_SHA1 20
+#define GITOID_LENGTH_SHA256 32
+
 static void set_default_dirlist (char *);
 static void set_section_start (char *, char *);
 static void set_segment_start (const char *, char *);
@@ -1747,7 +1750,10 @@ parse_args (unsigned argc, char **argv)
 	  break;
 
 	case OPTION_GITBOM:
-	  ldelf_emit_note_gitbom = (char *) xcalloc (40 + 1, sizeof (char));
+	  ldelf_emit_note_gitbom_sha1 =
+		(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
+	  ldelf_emit_note_gitbom_sha256 =
+		(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
 	  if (optarg != NULL)
 	    config.gitbom_dir = optarg;
 	  else

@@ -19,7 +19,8 @@
    MA 02110-1301, USA.  */
 
 extern const char *ldelf_emit_note_gnu_build_id;
-extern char *ldelf_emit_note_gitbom;
+extern char *ldelf_emit_note_gitbom_sha1;
+extern char *ldelf_emit_note_gitbom_sha256;
 extern const char *ldelf_emit_note_fdo_package_metadata;
 
 extern void ldelf_after_parse (void);

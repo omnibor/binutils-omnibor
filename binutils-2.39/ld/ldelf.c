@@ -43,6 +43,9 @@
 #include <jansson.h>
 #endif
 
+#define GITOID_LENGTH_SHA1 20
+#define GITOID_LENGTH_SHA256 32
+
 struct dt_needed
 {
   bfd *by;
@@ -52,8 +55,11 @@ struct dt_needed
 /* Style of .note.gnu.build-id section.  */
 const char *ldelf_emit_note_gnu_build_id;
 
-/* Content of .note.gitbom section.  */
-char *ldelf_emit_note_gitbom;
+/* Content of the SHA1 part of the .note.gitbom section.  */
+char *ldelf_emit_note_gitbom_sha1;
+
+/* Content of the SHA256 part of the .note.gitbom section.  */
+char *ldelf_emit_note_gitbom_sha256;
 
 /* Content of .note.package section.  */
 const char *ldelf_emit_note_fdo_package_metadata;
@@ -1321,34 +1327,66 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
           if (config.gitbom_dir != NULL ||
 	     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
 	    {
-              char *sec_contents = (char *) xcalloc (40, sizeof (char));
-	      char *sec_contents_gitoid = (char *) xcalloc (20, sizeof (char));
-              char *sec_contents_fin = (char *) xcalloc (40 + 1, sizeof (char));
-              bfd_get_section_contents (abfd, s, sec_contents, 0, 40);
-              strncpy (sec_contents_gitoid, sec_contents + 20, 20);
-              convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid,
-						  sec_contents_fin,
-						  20);
-              sec_contents_fin[40] = '\0';
+              char *sec_contents_sha1 =
+			(char *) xcalloc (2 * GITOID_LENGTH_SHA1, sizeof (char));
+	      char *sec_contents_gitoid_sha1 =
+			(char *) xcalloc (GITOID_LENGTH_SHA1, sizeof (char));
+              char *sec_contents_fin_sha1 =
+			(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
+              bfd_get_section_contents (abfd, s, sec_contents_sha1, 0,
+					20 + GITOID_LENGTH_SHA1);
+              strncpy (sec_contents_gitoid_sha1, sec_contents_sha1 + GITOID_LENGTH_SHA1,
+		       GITOID_LENGTH_SHA1);
+              convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid_sha1,
+						  sec_contents_fin_sha1,
+						  GITOID_LENGTH_SHA1);
+              sec_contents_fin_sha1[2 * GITOID_LENGTH_SHA1] = '\0';
+
+	      char *sec_contents_sha256 =
+			(char *) xcalloc (2 * GITOID_LENGTH_SHA256, sizeof (char));
+	      char *sec_contents_gitoid_sha256 =
+			(char *) xcalloc (GITOID_LENGTH_SHA256 + 1, sizeof (char));
+              char *sec_contents_fin_sha256 =
+			(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
+              bfd_get_section_contents (abfd, s, sec_contents_sha256,
+					20 + GITOID_LENGTH_SHA1,
+					20 + GITOID_LENGTH_SHA256);
+              strncpy (sec_contents_gitoid_sha256, sec_contents_sha256 + 20,
+		       GITOID_LENGTH_SHA256);
+              convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid_sha256,
+						  sec_contents_fin_sha256,
+						  GITOID_LENGTH_SHA256);
+              sec_contents_fin_sha256[2 * GITOID_LENGTH_SHA256] = '\0';
               gitbom_add_to_bom_sections (bfd_get_filename (abfd),
-					  sec_contents_fin,
-				          40);
-              free (sec_contents_fin);
-              free (sec_contents_gitoid);
-              free (sec_contents);
+					  sec_contents_fin_sha1,
+					  sec_contents_fin_sha256,
+				          2 * GITOID_LENGTH_SHA1,
+				          2 * GITOID_LENGTH_SHA256);
+              free (sec_contents_fin_sha256);
+              free (sec_contents_gitoid_sha256);
+              free (sec_contents_sha256);
+              free (sec_contents_fin_sha1);
+              free (sec_contents_gitoid_sha1);
+              free (sec_contents_sha1);
             }
         }
     }
 
   /* If GITBOM_DIR environment variable is set, but --gitbom=[DIR] is not used,
-     ldelf_emit_note_gitbom is NULL.  Therefore, in that case, we can allocate
-     memory for it here.  */
-  if (ldelf_emit_note_gitbom == NULL &&
+     ldelf_emit_note_gitbom_sha1 and ldelf_emit_note_gitbom_sha256 are both NULL.
+     Therefore, in that case, we can allocate memory for them here.  */
+  if (ldelf_emit_note_gitbom_sha1 == NULL &&
      (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
-    ldelf_emit_note_gitbom = (char *) xcalloc (40 + 1, sizeof (char));
+    ldelf_emit_note_gitbom_sha1 =
+	(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
+  if (ldelf_emit_note_gitbom_sha256 == NULL &&
+     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
+    ldelf_emit_note_gitbom_sha256 =
+	(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
 
   if (ldelf_emit_note_gnu_build_id != NULL
-      || ldelf_emit_note_gitbom != NULL
+      || (ldelf_emit_note_gitbom_sha1 != NULL
+	  && ldelf_emit_note_gitbom_sha256 != NULL)
       || ldelf_emit_note_fdo_package_metadata != NULL)
     {
       /* Find an ELF input.  */
@@ -1370,11 +1408,14 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
 	}
 
       if (abfd == NULL
-	  || (ldelf_emit_note_gitbom != NULL
+	  || (ldelf_emit_note_gitbom_sha1 != NULL
+	      && ldelf_emit_note_gitbom_sha256 != NULL
 	      && !ldelf_setup_gitbom (abfd)))
 	{
-	  free (ldelf_emit_note_gitbom);
-	  ldelf_emit_note_gitbom = NULL;
+	  free (ldelf_emit_note_gitbom_sha1);
+	  free (ldelf_emit_note_gitbom_sha256);
+	  ldelf_emit_note_gitbom_sha1 = NULL;
+	  ldelf_emit_note_gitbom_sha256 = NULL;
 	}
 
       if (abfd == NULL
@@ -1620,7 +1661,7 @@ ldelf_setup_build_id (bfd *ibfd)
 
 /* This function returns a character which has a decimal value equal to
    the integer value being represented by the hexadecimal character
-   passed as an argument.  */
+   passed as a parameter.  */
 
 static unsigned char
 get_decimal (unsigned char c)
@@ -1667,15 +1708,19 @@ static bool
 write_gitbom (bfd *abfd)
 {
   struct elf_obj_tdata *t = elf_tdata (abfd);
-  char gitoid[20];
+  char gitoid_sha1[GITOID_LENGTH_SHA1];
+  char gitoid_sha256[GITOID_LENGTH_SHA256];
   asection *asec;
   Elf_Internal_Shdr *i_shdr;
-  unsigned char *contents, *gitbom_bits;
-  bfd_size_type size;
+  unsigned char *contents, *gitbom_bits_sha1, *gitbom_bits_sha256;
+  bfd_size_type size, size1, size2;
   file_ptr position;
-  Elf_External_Note *e_note;
+  Elf_External_Note *e_note1, *e_note2;
 
-  convert_ascii_hex_to_ascii_decimal (*(t->o->gitbom.gitoid), gitoid, 40);
+  convert_ascii_hex_to_ascii_decimal (*(t->o->gitbom.gitoid_sha1), gitoid_sha1,
+				      2 * GITOID_LENGTH_SHA1);
+  convert_ascii_hex_to_ascii_decimal (*(t->o->gitbom.gitoid_sha256), gitoid_sha256,
+				      2 * GITOID_LENGTH_SHA256);
   asec = t->o->gitbom.sec;
   if (bfd_is_abs_section (asec->output_section))
     {
@@ -1694,24 +1739,45 @@ write_gitbom (bfd *abfd)
   else
     contents = i_shdr->contents + asec->output_offset;
 
-  e_note = (Elf_External_Note *) contents;
-  size = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
-  size = (size + 3) & -(bfd_size_type) 4;
-  gitbom_bits = contents + size;
-  size = asec->size - size;
+  /* SHA1 entry.  */
+  e_note1 = (Elf_External_Note *) contents;
+  size1 = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size1 = (size1 + 3) & -(bfd_size_type) 4;
+  gitbom_bits_sha1 = contents + size1;
 
-  /* Clear the gitoid field.  */
-  memset (gitbom_bits, 0, size);
+  /* Clear the SHA1 gitoid field.  */
+  memset (gitbom_bits_sha1, 0, GITOID_LENGTH_SHA1);
 
-  bfd_h_put_32 (abfd, sizeof "GITBOM", &e_note->namesz);
-  bfd_h_put_32 (abfd, size, &e_note->descsz);
-  bfd_h_put_32 (abfd, NT_GITBOM_SHA1, &e_note->type);
-  memcpy (e_note->name, "GITBOM", sizeof "GITBOM");
-  memcpy (e_note->name + sizeof "GITBOM", "\0", 1);
-  memcpy (gitbom_bits, gitoid, 20);
+  bfd_h_put_32 (abfd, sizeof "GITBOM", &e_note1->namesz);
+  bfd_h_put_32 (abfd, GITOID_LENGTH_SHA1, &e_note1->descsz);
+  bfd_h_put_32 (abfd, NT_GITBOM_SHA1, &e_note1->type);
+  memcpy (e_note1->name, "GITBOM", sizeof "GITBOM");
+  memcpy (e_note1->name + sizeof "GITBOM", "\0", 1);
+  memcpy (gitbom_bits_sha1, gitoid_sha1, GITOID_LENGTH_SHA1);
+
+  /* SHA256 entry.  */
+  e_note2 = (Elf_External_Note *) (contents + 20 + GITOID_LENGTH_SHA1);
+  size2 = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size2 = (size2 + 3) & -(bfd_size_type) 4;
+  gitbom_bits_sha256 = contents + 20 + GITOID_LENGTH_SHA1 + size2;
+
+  /* Clear the SHA256 gitoid field.  */
+  memset (gitbom_bits_sha256, 0, GITOID_LENGTH_SHA256);
+
+  bfd_h_put_32 (abfd, sizeof "GITBOM", &e_note2->namesz);
+  bfd_h_put_32 (abfd, GITOID_LENGTH_SHA256, &e_note2->descsz);
+  bfd_h_put_32 (abfd, NT_GITBOM_SHA256, &e_note2->type);
+  memcpy (e_note2->name, "GITBOM", sizeof "GITBOM");
+  memcpy (e_note2->name + sizeof "GITBOM", "\0", 1);
+  memcpy (gitbom_bits_sha256, gitoid_sha256, GITOID_LENGTH_SHA256);
 
   position = i_shdr->sh_offset + asec->output_offset;
   size = asec->size;
+
+  free (ldelf_emit_note_gitbom_sha1);
+  free (ldelf_emit_note_gitbom_sha256);
+  ldelf_emit_note_gitbom_sha1 = NULL;
+  ldelf_emit_note_gitbom_sha256 = NULL;
   return (bfd_seek (abfd, position, SEEK_SET) == 0
 	  && bfd_bwrite (contents, size, abfd) == size);
 }
@@ -1722,12 +1788,15 @@ bool
 ldelf_setup_gitbom (bfd *ibfd)
 {
   asection *s;
-  bfd_size_type size;
+  bfd_size_type size1, size256;
   flagword flags;
 
-  size = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
-  size = (size + 3) & -(bfd_size_type) 4;
-  size += 20;
+  size1 = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size1 = (size1 + 3) & -(bfd_size_type) 4;
+  size1 += GITOID_LENGTH_SHA1;
+  size256 = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size256 = (size256 + 3) & -(bfd_size_type) 4;
+  size256 += GITOID_LENGTH_SHA256;
 
   flags = (SEC_ALLOC | SEC_LOAD | SEC_IN_MEMORY
 	   | SEC_LINKER_CREATED | SEC_READONLY | SEC_DATA);
@@ -1737,10 +1806,11 @@ ldelf_setup_gitbom (bfd *ibfd)
     {
       struct elf_obj_tdata *t = elf_tdata (link_info.output_bfd);
       t->o->gitbom.after_write_object_contents = &write_gitbom;
-      t->o->gitbom.gitoid = &ldelf_emit_note_gitbom;
+      t->o->gitbom.gitoid_sha1 = &ldelf_emit_note_gitbom_sha1;
+      t->o->gitbom.gitoid_sha256 = &ldelf_emit_note_gitbom_sha256;
       t->o->gitbom.sec = s;
       elf_section_type (s) = SHT_NOTE;
-      s->size = size;
+      s->size = size1 + size256;
       return true;
     }
 

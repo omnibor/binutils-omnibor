@@ -19554,6 +19554,26 @@ get_gnu_elf_note_type (unsigned e_type)
     }
 }
 
+static const char *
+get_gitbom_elf_note_type (unsigned e_type)
+{
+  /* NB/ Keep this switch statement in sync with print_gitbom_note ().  */
+  switch (e_type)
+    {
+    case NT_GITBOM_SHA1:
+      return _("NT_GITBOM (SHA1 GITOID)");
+    case NT_GITBOM_SHA256:
+      return _("NT_GITBOM (SHA256 GITOID)");
+    default:
+      {
+	static char buff[64];
+
+	snprintf (buff, sizeof (buff), _("Unknown note type: (0x%08x)"), e_type);
+	return buff;
+      }
+    }
+}
+
 static void
 decode_x86_compat_isa (unsigned int bitmask)
 {
@@ -20294,12 +20314,31 @@ print_gnu_note (Filedata * filedata, Elf_Internal_Note *pnote)
 static bool
 print_gitbom_note (Elf_Internal_Note *pnote)
 {
-  unsigned long i;
+  /* NB/ Keep this switch statement in sync with get_gitbom_elf_note_type ().  */
+  switch (pnote->type)
+    {
+    case NT_GITBOM_SHA1:
+      {
+	unsigned long i;
 
-  printf (_("    SHA1 GitOID: "));
-  for (i = 0; i < pnote->descsz; ++i)
-    printf ("%02x", pnote->descdata[i] & 0xff);
-  printf ("\n");
+	printf (_("    SHA1 GitOID: "));
+	for (i = 0; i < pnote->descsz; ++i)
+	  printf ("%02x", pnote->descdata[i] & 0xff);
+	printf ("\n");
+      }
+      break;
+
+    case NT_GITBOM_SHA256:
+      {
+	unsigned long i;
+
+	printf (_("    SHA256 GitOID: "));
+	for (i = 0; i < pnote->descsz; ++i)
+	  printf ("%02x", pnote->descdata[i] & 0xff);
+	printf ("\n");
+      }
+      break;
+    }
 
   return true;
 }
@@ -21517,7 +21556,7 @@ process_note (Elf_Internal_Note *  pnote,
 
   else if (startswith (pnote->namedata, "GITBOM"))
     /* GitBOM-specific object file notes.  */
-    nt = _("NT_GITBOM (SHA1 GITOID)");
+    nt = get_gitbom_elf_note_type (pnote->type);
 
   else if (startswith (pnote->namedata, "AMDGPU"))
     /* AMDGPU-specific object file notes.  */
