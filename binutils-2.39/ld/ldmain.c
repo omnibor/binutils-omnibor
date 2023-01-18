@@ -1914,6 +1914,8 @@ main (int argc, char **argv)
 
       free (gitoid_sha256);
       free (gitoid_sha1);
+      if (getenv ("GITBOM_NO_EMBED") == NULL)
+	free (gitbom_dir);
     }
 
   /* Even if we're producing relocatable output, some non-fatal errors should
@@ -1993,22 +1995,24 @@ main (int argc, char **argv)
     }
 
   /* Symlink (gitoid_of_executable -> gitoid_of_gitbom_doc) creation for
-     both SHA1 and SHA256 GitBOM Document files.  */
-  if (config.gitbom_dir != NULL ||
-     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
-    {
-      create_sha1_symlink (ldelf_emit_note_gitbom_sha1,
-			   gitbom_dir);
-
-      create_sha256_symlink (ldelf_emit_note_gitbom_sha256,
+     both SHA1 and SHA256 GitBOM Document files.  Do it only in the NO_EMBED
+     case (when GITBOM_NO_EMBED environment variable is set).  */
+  if (getenv ("GITBOM_NO_EMBED") != NULL)
+    if (config.gitbom_dir != NULL ||
+       (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
+      {
+	create_sha1_symlink (ldelf_emit_note_gitbom_sha1,
 			     gitbom_dir);
 
-      free (ldelf_emit_note_gitbom_sha1);
-      free (ldelf_emit_note_gitbom_sha256);
-      ldelf_emit_note_gitbom_sha1 = NULL;
-      ldelf_emit_note_gitbom_sha256 = NULL;
-      free (gitbom_dir);
-    }
+	create_sha256_symlink (ldelf_emit_note_gitbom_sha256,
+			       gitbom_dir);
+
+	free (ldelf_emit_note_gitbom_sha1);
+	free (ldelf_emit_note_gitbom_sha256);
+	ldelf_emit_note_gitbom_sha1 = NULL;
+	ldelf_emit_note_gitbom_sha256 = NULL;
+	free (gitbom_dir);
+      }
 
   /* Prevent ld_cleanup from doing anything, after a successful link.  */
   output_filename = NULL;

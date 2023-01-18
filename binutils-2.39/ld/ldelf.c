@@ -1774,6 +1774,13 @@ write_gitbom (bfd *abfd)
   position = i_shdr->sh_offset + asec->output_offset;
   size = asec->size;
 
+  if (getenv ("GITBOM_NO_EMBED") == NULL)
+    {
+      free (ldelf_emit_note_gitbom_sha1);
+      free (ldelf_emit_note_gitbom_sha256);
+      ldelf_emit_note_gitbom_sha1 = NULL;
+      ldelf_emit_note_gitbom_sha256 = NULL;
+    }
   return (bfd_seek (abfd, position, SEEK_SET) == 0
 	  && bfd_bwrite (contents, size, abfd) == size);
 }
