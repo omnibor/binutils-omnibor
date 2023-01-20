@@ -64,6 +64,8 @@
 #define TARGET_SYSTEM_ROOT ""
 #endif
 
+static char *gitbom_dir;
+
 /* EXPORTS */
 
 FILE *saved_script_handle = NULL;
@@ -271,7 +273,7 @@ gitbom_find_last_of (char c, const char *str)
 
 /* Append the string str2 to the end of the string str1.  */
 
-static void
+void
 gitbom_append_to_string (char **str1, const char *str2,
 			 unsigned long len1, unsigned long len2)
 {
@@ -534,8 +536,8 @@ close_all_directories_in_path (void)
 
 /* Calculate the SHA1 gitoid using the contents of the given file.  */
 
-static void
-calculate_sha1_gitbom (FILE* dep_file, unsigned char resblock[])
+void
+calculate_sha1_gitbom (FILE *dep_file, unsigned char resblock[])
 {
   fseek (dep_file, 0L, SEEK_END);
   long file_size = ftell (dep_file);
@@ -572,7 +574,7 @@ calculate_sha1_gitbom (FILE* dep_file, unsigned char resblock[])
 
 /* Calculate the SHA1 gitoid using the given contents.  */
 
-static void
+void
 calculate_sha1_gitbom_with_contents (char *contents,
 				     unsigned char resblock[])
 {
@@ -605,8 +607,8 @@ calculate_sha1_gitbom_with_contents (char *contents,
 
 /* Calculate the SHA256 gitoid using the contents of the given file.  */
 
-static void
-calculate_sha256_gitbom (FILE* dep_file, unsigned char resblock[])
+void
+calculate_sha256_gitbom (FILE *dep_file, unsigned char resblock[])
 {
   fseek (dep_file, 0L, SEEK_END);
   long file_size = ftell (dep_file);
@@ -643,9 +645,9 @@ calculate_sha256_gitbom (FILE* dep_file, unsigned char resblock[])
 
 /* Calculate the SHA256 gitoid using the given contents.  */
 
-static void
+void
 calculate_sha256_gitbom_with_contents (char *contents,
-				     unsigned char resblock[])
+				       unsigned char resblock[])
 {
   long file_size = strlen (contents);
 
@@ -1369,6 +1371,166 @@ write_sha256_gitbom (char **name, const char *result_dir)
   free (new_file_contents);
 }
 
+static void
+create_sha1_symlink (const char *gitoid_sha1, char *res_dir)
+{
+  static const char *const lut = "0123456789abcdef";
+  char *gitoid_exec_sha1 = (char *) xcalloc (1, sizeof (char));
+  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
+  high_ch[1] = '\0';
+  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
+  low_ch[1] = '\0';
+
+  FILE *file_executable = fopen (output_filename, "rb");
+  unsigned char resblock[GITOID_LENGTH_SHA1];
+
+  calculate_sha1_gitbom (file_executable, resblock);
+
+  fclose (file_executable);
+
+  for (unsigned i = 0; i != GITOID_LENGTH_SHA1; i++)
+    {
+      high_ch[0] = lut[resblock[i] >> 4];
+      low_ch[0] = lut[resblock[i] & 15];
+      gitbom_append_to_string (&gitoid_exec_sha1, high_ch, i * 2, 2);
+      gitbom_append_to_string (&gitoid_exec_sha1, low_ch, i * 2 + 1, 2);
+    }
+
+  char *path_adg = (char *) xcalloc (1, sizeof (char));
+  DIR *dir = NULL, *dir_adg = NULL;
+
+  if (strcmp ("", res_dir) != 0)
+    {
+      dir = opendir (res_dir);
+      if (dir == NULL)
+        {
+          free (path_adg);
+          free (low_ch);
+          free (high_ch);
+          free (gitoid_exec_sha1);
+          return;
+        }
+
+      int dfd = dirfd (dir);
+      mkdirat (dfd, ".adg", S_IRWXU);
+      gitbom_append_to_string (&path_adg, res_dir, strlen (path_adg),
+			       strlen (res_dir));
+      gitbom_append_to_string (&path_adg, "/.adg", strlen (path_adg),
+			       strlen ("/.adg"));
+    }
+  else
+    {
+      mkdir (".adg", S_IRWXU);
+      gitbom_append_to_string (&path_adg, res_dir, strlen (path_adg),
+			       strlen (res_dir));
+      gitbom_append_to_string (&path_adg, ".adg", strlen (path_adg),
+			       strlen (".adg"));
+    }
+
+  dir_adg = opendir (path_adg);
+  if (dir_adg == NULL)
+    {
+      if (strcmp ("", res_dir) != 0)
+        closedir (dir);
+      free (path_adg);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha1);
+      return;
+    }
+
+  int dfd_adg = dirfd (dir_adg);
+  symlinkat (gitoid_sha1, dfd_adg, gitoid_exec_sha1);
+
+  closedir (dir_adg);
+  if (strcmp ("", res_dir) != 0)
+    closedir (dir);
+  free (path_adg);
+  free (low_ch);
+  free (high_ch);
+  free (gitoid_exec_sha1);
+}
+
+static void
+create_sha256_symlink (const char *gitoid_sha256, char *res_dir)
+{
+  static const char *const lut = "0123456789abcdef";
+  char *gitoid_exec_sha256 = (char *) xcalloc (1, sizeof (char));
+  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
+  high_ch[1] = '\0';
+  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
+  low_ch[1] = '\0';
+
+  FILE *file_executable = fopen (output_filename, "rb");
+  unsigned char resblock[GITOID_LENGTH_SHA256];
+
+  calculate_sha256_gitbom (file_executable, resblock);
+
+  fclose (file_executable);
+
+  for (unsigned i = 0; i != GITOID_LENGTH_SHA256; i++)
+    {
+      high_ch[0] = lut[resblock[i] >> 4];
+      low_ch[0] = lut[resblock[i] & 15];
+      gitbom_append_to_string (&gitoid_exec_sha256, high_ch, i * 2, 2);
+      gitbom_append_to_string (&gitoid_exec_sha256, low_ch, i * 2 + 1, 2);
+    }
+
+  char *path_adg = (char *) xcalloc (1, sizeof (char));
+  DIR *dir = NULL, *dir_adg = NULL;
+
+  if (strcmp ("", res_dir) != 0)
+    {
+      dir = opendir (res_dir);
+      if (dir == NULL)
+        {
+          free (path_adg);
+          free (low_ch);
+          free (high_ch);
+          free (gitoid_exec_sha256);
+          return;
+        }
+
+      int dfd = dirfd (dir);
+      mkdirat (dfd, ".adg", S_IRWXU);
+      gitbom_append_to_string (&path_adg, res_dir, strlen (path_adg),
+			       strlen (res_dir));
+      gitbom_append_to_string (&path_adg, "/.adg", strlen (path_adg),
+			       strlen ("/.adg"));
+    }
+  else
+    {
+      mkdir (".adg", S_IRWXU);
+      gitbom_append_to_string (&path_adg, res_dir, strlen (path_adg),
+			       strlen (res_dir));
+      gitbom_append_to_string (&path_adg, ".adg", strlen (path_adg),
+			       strlen (".adg"));
+    }
+
+  dir_adg = opendir (path_adg);
+  if (dir_adg == NULL)
+    {
+      if (strcmp ("", res_dir) != 0)
+        closedir (dir);
+      free (path_adg);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha256);
+      return;
+    }
+
+  int dfd_adg = dirfd (dir_adg);
+  symlinkat (gitoid_sha256, dfd_adg, gitoid_exec_sha256);
+
+  closedir (dir_adg);
+  if (strcmp ("", res_dir) != 0)
+    closedir (dir);
+  free (path_adg);
+  free (low_ch);
+  free (high_ch);
+  free (gitoid_exec_sha256);
+}
+
 
 static void
 ld_cleanup (void)
@@ -1705,7 +1867,7 @@ main (int argc, char **argv)
   if (config.gitbom_dir != NULL ||
      (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
     {
-      char *gitbom_dir = (char *) xcalloc (1, sizeof (char));
+      gitbom_dir = (char *) xcalloc (1, sizeof (char));
 
       const char *env_gitbom = getenv ("GITBOM_DIR");
       if (env_gitbom != NULL)
@@ -1752,7 +1914,8 @@ main (int argc, char **argv)
 
       free (gitoid_sha256);
       free (gitoid_sha1);
-      free (gitbom_dir);
+      if (getenv ("GITBOM_NO_EMBED") == NULL)
+	free (gitbom_dir);
     }
 
   /* Even if we're producing relocatable output, some non-fatal errors should
@@ -1830,6 +1993,26 @@ main (int argc, char **argv)
 	       program_name, run_time / 1000000, run_time % 1000000);
       fflush (stderr);
     }
+
+  /* Symlink (gitoid_of_executable -> gitoid_of_gitbom_doc) creation for
+     both SHA1 and SHA256 GitBOM Document files.  Do it only in the NO_EMBED
+     case (when GITBOM_NO_EMBED environment variable is set).  */
+  if (getenv ("GITBOM_NO_EMBED") != NULL)
+    if (config.gitbom_dir != NULL ||
+       (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
+      {
+	create_sha1_symlink (ldelf_emit_note_gitbom_sha1,
+			     gitbom_dir);
+
+	create_sha256_symlink (ldelf_emit_note_gitbom_sha256,
+			       gitbom_dir);
+
+	free (ldelf_emit_note_gitbom_sha1);
+	free (ldelf_emit_note_gitbom_sha256);
+	ldelf_emit_note_gitbom_sha1 = NULL;
+	ldelf_emit_note_gitbom_sha256 = NULL;
+	free (gitbom_dir);
+      }
 
   /* Prevent ld_cleanup from doing anything, after a successful link.  */
   output_filename = NULL;
