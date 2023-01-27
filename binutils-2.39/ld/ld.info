@@ -622,14 +622,14 @@ GNU linker:
      installation where it was produced, and should not be copied into
      distributed makefiles without careful editing.
 
-'--gitbom'
-'--gitbom=DIRECTORY'
-     Calculate the 'GitBOM' information.  Use DIRECTORY as the path to the
-     directory in which 'GitBOM' information should be stored.  This option
-     has precedence over the default case (when DIRECTORY is not
-     specified), but lower priority compared to the 'GITBOM_DIR'
-     environment variable.  In the default case, 'GitBOM' information is
-     stored in the same directory as the resulting executable.
+'--omnibor'
+'--omnibor=DIRECTORY'
+     Calculate the 'OmniBOR' information.  Use DIRECTORY as the path to the
+     directory in which the 'OmniBOR' information should be stored.  This
+     option has precedence over the default case (when DIRECTORY is not
+     specified), but lower priority compared to the 'OMNIBOR_DIR'
+     environment variable.  In the default case, the 'OmniBOR' information
+     is stored in the same directory as the resulting executable.
 
 '-O LEVEL'
      If LEVEL is a numeric values greater than zero 'ld' optimizes the
@@ -8495,8 +8495,8 @@ LD Index
 * --format=VERSION:                      TI COFF.            (line    6)
 * --gc-keep-exported:                    Options.            (line 1453)
 * --gc-sections:                         Options.            (line 1415)
-* --gitbom:                              Options.            (line 625)
-* --gitbom=DIRECTORY:                    Options.            (line 625)
+* --omnibor:                             Options.            (line 625)
+* --omnibor=DIRECTORY:                   Options.            (line 625)
 * --got:                                 Options.            (line 2808)
 * --got=TYPE:                            M68K.               (line    6)
 * --gpsize=VALUE:                        Options.            (line  347)

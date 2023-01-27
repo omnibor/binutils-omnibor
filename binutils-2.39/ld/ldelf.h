@@ -19,8 +19,8 @@
    MA 02110-1301, USA.  */
 
 extern const char *ldelf_emit_note_gnu_build_id;
-extern char *ldelf_emit_note_gitbom_sha1;
-extern char *ldelf_emit_note_gitbom_sha256;
+extern char *ldelf_emit_note_omnibor_sha1;
+extern char *ldelf_emit_note_omnibor_sha256;
 extern const char *ldelf_emit_note_fdo_package_metadata;
 
 extern unsigned char get_hex (unsigned char);
@@ -33,7 +33,7 @@ extern void ldelf_before_plugin_all_symbols_read (int, int, int, int,
 						  int, const char *);
 extern void ldelf_after_open (int, int, int, int, int, const char *);
 extern bool ldelf_setup_build_id (bfd *);
-extern bool ldelf_setup_gitbom (bfd *);
+extern bool ldelf_setup_omnibor (bfd *);
 extern bool ldelf_setup_package_metadata (bfd *);
 extern void ldelf_append_to_separated_string (char **, char *);
 extern void ldelf_before_allocation (char *, char *, const char *);

@@ -149,8 +149,8 @@ static const struct ld_option ld_options[] =
   { {"gpsize", required_argument, NULL, 'G'},
     'G', N_("SIZE"), N_("Small data size (if no size, same as --shared)"),
     TWO_DASHES },
-  { {"gitbom", optional_argument, NULL, OPTION_GITBOM},
-    '\0', N_("DIRECTORY"), N_("Calculate GitBOM information"), TWO_DASHES },
+  { {"omnibor", optional_argument, NULL, OPTION_OMNIBOR},
+    '\0', N_("DIRECTORY"), N_("Calculate OmniBOR information"), TWO_DASHES },
   { {"soname", required_argument, NULL, OPTION_SONAME},
     'h', N_("FILENAME"), N_("Set internal name of shared library"), ONE_DASH },
   { {"dynamic-linker", required_argument, NULL, OPTION_DYNAMIC_LINKER},
@@ -1749,15 +1749,15 @@ parse_args (unsigned argc, char **argv)
 	    einfo (_("%F%P: bad --ctf-share-types option: %s\n"), optarg);
 	  break;
 
-	case OPTION_GITBOM:
-	  ldelf_emit_note_gitbom_sha1 =
+	case OPTION_OMNIBOR:
+	  ldelf_emit_note_omnibor_sha1 =
 		(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
-	  ldelf_emit_note_gitbom_sha256 =
+	  ldelf_emit_note_omnibor_sha256 =
 		(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
 	  if (optarg != NULL)
-	    config.gitbom_dir = optarg;
+	    config.omnibor_dir = optarg;
 	  else
-	    config.gitbom_dir = "";
+	    config.omnibor_dir = "";
 	  break;
 	}
     }

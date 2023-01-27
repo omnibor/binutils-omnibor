@@ -1,4 +1,4 @@
-# Expect script for GitBOM calculation tests.
+# Expect script for OmniBOR calculation tests.
 #   Copyright (C) 2021-2022 Free Software Foundation, Inc.
 #
 # This file is part of the GNU Binutils.
@@ -25,11 +25,11 @@ if ![is_elf_format] {
     return
 }
 
-proc check_gitbom_document_contents_sha1 { gitbom_file test_name } {
-    if [file exists $gitbom_file] then {
-        set file_a [open $gitbom_file r]
+proc check_omnibor_document_contents_sha1 { omnibor_file test_name } {
+    if [file exists $omnibor_file] then {
+        set file_a [open $omnibor_file r]
     } else {
-        perror "$gitbom_file doesn't exist"
+        perror "$omnibor_file doesn't exist"
     }
 
     set eof -1
@@ -49,11 +49,11 @@ proc check_gitbom_document_contents_sha1 { gitbom_file test_name } {
     return 0
 }
 
-proc check_gitbom_document_contents_sha256 { gitbom_file test_name } {
-    if [file exists $gitbom_file] then {
-        set file_a [open $gitbom_file r]
+proc check_omnibor_document_contents_sha256 { omnibor_file test_name } {
+    if [file exists $omnibor_file] then {
+        set file_a [open $omnibor_file r]
     } else {
-        perror "$gitbom_file doesn't exist"
+        perror "$omnibor_file doesn't exist"
     }
 
     set eof -1
@@ -73,47 +73,47 @@ proc check_gitbom_document_contents_sha256 { gitbom_file test_name } {
     return 0
 }
 
-set env(GITBOM_DIR) "env_dir"
+set env(OMNIBOR_DIR) "env_dir"
 
 run_ld_link_tests [list \
     [list \
-	"GitBOM calculation with GITBOM_DIR and --gitbom" \
-	"-r --gitbom" \
+	"OmniBOR calculation with OMNIBOR_DIR and --omnibor" \
+	"-r --omnibor" \
 	"" \
 	"" \
 	{dummy.s} \
-	{{readelf {--notes} gitbom.rd}} \
-	"gitbom1.o" \
+	{{readelf {--notes} omnibor.rd}} \
+	"omnibor1.o" \
     ] \
     [list \
-	"GitBOM calculation with GITBOM_DIR" \
+	"OmniBOR calculation with OMNIBOR_DIR" \
 	"-r" \
 	"" \
 	"" \
 	{dummy.s} \
-	{{readelf {--notes} gitbom.rd}} \
-	"gitbom2.o" \
+	{{readelf {--notes} omnibor.rd}} \
+	"omnibor2.o" \
     ] \
 ]
 
-check_gitbom_document_contents_sha1 "env_dir/.gitbom/objects/sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "GitBOM SHA1 Document file contents 1"
+check_omnibor_document_contents_sha1 "env_dir/objects/gitoid_blob_sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "OmniBOR SHA1 Document file contents 1"
 
-check_gitbom_document_contents_sha256 "env_dir/.gitbom/objects/sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "GitBOM SHA256 Document file contents 1"
+check_omnibor_document_contents_sha256 "env_dir/objects/gitoid_blob_sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "OmniBOR SHA256 Document file contents 1"
 
-unset env(GITBOM_DIR)
+unset env(OMNIBOR_DIR)
 
 run_ld_link_tests [list \
     [list \
-	"GitBOM calculation with --gitbom" \
-	"-r --gitbom=dir" \
+	"OmniBOR calculation with --omnibor" \
+	"-r --omnibor=dir" \
 	"" \
 	"" \
 	{dummy.s} \
-	{{readelf {--notes} gitbom.rd}} \
-	"gitbom3.o" \
+	{{readelf {--notes} omnibor.rd}} \
+	"omnibor3.o" \
     ] \
 ]
 
-check_gitbom_document_contents_sha1 "dir/.gitbom/objects/sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "GitBOM SHA1 Document file contents 2"
+check_omnibor_document_contents_sha1 "dir/objects/gitoid_blob_sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "OmniBOR SHA1 Document file contents 2"
 
-check_gitbom_document_contents_sha256 "dir/.gitbom/objects/sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "GitBOM SHA256 Document file contents 2"
+check_omnibor_document_contents_sha256 "dir/objects/gitoid_blob_sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "OmniBOR SHA256 Document file contents 2"
