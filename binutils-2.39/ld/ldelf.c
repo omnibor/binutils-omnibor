@@ -55,11 +55,11 @@ struct dt_needed
 /* Style of .note.gnu.build-id section.  */
 const char *ldelf_emit_note_gnu_build_id;
 
-/* Content of the SHA1 part of the .note.gitbom section.  */
-char *ldelf_emit_note_gitbom_sha1;
+/* Content of the SHA1 part of the .note.omnibor section.  */
+char *ldelf_emit_note_omnibor_sha1;
 
-/* Content of the SHA256 part of the .note.gitbom section.  */
-char *ldelf_emit_note_gitbom_sha256;
+/* Content of the SHA256 part of the .note.omnibor section.  */
+char *ldelf_emit_note_omnibor_sha256;
 
 /* Content of .note.package section.  */
 const char *ldelf_emit_note_fdo_package_metadata;
@@ -1319,13 +1319,13 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
 
   for (abfd = link_info.input_bfds; abfd; abfd = abfd->link.next)
     {
-      /* Discard input .note.gitbom sections.  */
-      s = bfd_get_section_by_name (abfd, ".note.gitbom");
+      /* Discard input .note.omnibor sections.  */
+      s = bfd_get_section_by_name (abfd, ".note.omnibor");
       if (s != NULL)
         {
           s->flags |= SEC_EXCLUDE;
-          if (config.gitbom_dir != NULL ||
-	     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
+          if (config.omnibor_dir != NULL ||
+	     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
 	    {
               char *sec_contents_sha1 =
 			(char *) xcalloc (2 * GITOID_LENGTH_SHA1, sizeof (char));
@@ -1357,11 +1357,11 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
 						  sec_contents_fin_sha256,
 						  GITOID_LENGTH_SHA256);
               sec_contents_fin_sha256[2 * GITOID_LENGTH_SHA256] = '\0';
-              gitbom_add_to_bom_sections (bfd_get_filename (abfd),
-					  sec_contents_fin_sha1,
-					  sec_contents_fin_sha256,
-				          2 * GITOID_LENGTH_SHA1,
-				          2 * GITOID_LENGTH_SHA256);
+              omnibor_add_to_note_sections (bfd_get_filename (abfd),
+					    sec_contents_fin_sha1,
+					    sec_contents_fin_sha256,
+					    2 * GITOID_LENGTH_SHA1,
+					    2 * GITOID_LENGTH_SHA256);
               free (sec_contents_fin_sha256);
               free (sec_contents_gitoid_sha256);
               free (sec_contents_sha256);
@@ -1372,21 +1372,21 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
         }
     }
 
-  /* If GITBOM_DIR environment variable is set, but --gitbom=[DIR] is not used,
-     ldelf_emit_note_gitbom_sha1 and ldelf_emit_note_gitbom_sha256 are both NULL.
+  /* If OMNIBOR_DIR environment variable is set, but --omnibor=[DIR] is not used,
+     ldelf_emit_note_omnibor_sha1 and ldelf_emit_note_omnibor_sha256 are both NULL.
      Therefore, in that case, we can allocate memory for them here.  */
-  if (ldelf_emit_note_gitbom_sha1 == NULL &&
-     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
-    ldelf_emit_note_gitbom_sha1 =
+  if (ldelf_emit_note_omnibor_sha1 == NULL &&
+     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+    ldelf_emit_note_omnibor_sha1 =
 	(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
-  if (ldelf_emit_note_gitbom_sha256 == NULL &&
-     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
-    ldelf_emit_note_gitbom_sha256 =
+  if (ldelf_emit_note_omnibor_sha256 == NULL &&
+     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+    ldelf_emit_note_omnibor_sha256 =
 	(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
 
   if (ldelf_emit_note_gnu_build_id != NULL
-      || (ldelf_emit_note_gitbom_sha1 != NULL
-	  && ldelf_emit_note_gitbom_sha256 != NULL)
+      || (ldelf_emit_note_omnibor_sha1 != NULL
+	  && ldelf_emit_note_omnibor_sha256 != NULL)
       || ldelf_emit_note_fdo_package_metadata != NULL)
     {
       /* Find an ELF input.  */
@@ -1408,14 +1408,14 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
 	}
 
       if (abfd == NULL
-	  || (ldelf_emit_note_gitbom_sha1 != NULL
-	      && ldelf_emit_note_gitbom_sha256 != NULL
-	      && !ldelf_setup_gitbom (abfd)))
+	  || (ldelf_emit_note_omnibor_sha1 != NULL
+	      && ldelf_emit_note_omnibor_sha256 != NULL
+	      && !ldelf_setup_omnibor (abfd)))
 	{
-	  free (ldelf_emit_note_gitbom_sha1);
-	  free (ldelf_emit_note_gitbom_sha256);
-	  ldelf_emit_note_gitbom_sha1 = NULL;
-	  ldelf_emit_note_gitbom_sha256 = NULL;
+	  free (ldelf_emit_note_omnibor_sha1);
+	  free (ldelf_emit_note_omnibor_sha256);
+	  ldelf_emit_note_omnibor_sha1 = NULL;
+	  ldelf_emit_note_omnibor_sha256 = NULL;
 	}
 
       if (abfd == NULL
@@ -1705,27 +1705,27 @@ convert_ascii_hex_to_ascii_decimal (const char *in_array, char *out_array,
 }
 
 static bool
-write_gitbom (bfd *abfd)
+write_omnibor (bfd *abfd)
 {
   struct elf_obj_tdata *t = elf_tdata (abfd);
   char gitoid_sha1[GITOID_LENGTH_SHA1];
   char gitoid_sha256[GITOID_LENGTH_SHA256];
   asection *asec;
   Elf_Internal_Shdr *i_shdr;
-  unsigned char *contents, *gitbom_bits_sha1, *gitbom_bits_sha256;
+  unsigned char *contents, *omnibor_bits_sha1, *omnibor_bits_sha256;
   bfd_size_type size, size1, size2;
   file_ptr position;
   Elf_External_Note *e_note1, *e_note2;
 
-  convert_ascii_hex_to_ascii_decimal (*(t->o->gitbom.gitoid_sha1), gitoid_sha1,
+  convert_ascii_hex_to_ascii_decimal (*(t->o->omnibor.gitoid_sha1), gitoid_sha1,
 				      2 * GITOID_LENGTH_SHA1);
-  convert_ascii_hex_to_ascii_decimal (*(t->o->gitbom.gitoid_sha256), gitoid_sha256,
+  convert_ascii_hex_to_ascii_decimal (*(t->o->omnibor.gitoid_sha256), gitoid_sha256,
 				      2 * GITOID_LENGTH_SHA256);
-  asec = t->o->gitbom.sec;
+  asec = t->o->omnibor.sec;
   if (bfd_is_abs_section (asec->output_section))
     {
-      einfo (_("%P: warning: .note.gitbom section discarded,"
-	       " --gitbom ignored\n"));
+      einfo (_("%P: warning: .note.omnibor section discarded,"
+	       " --omnibor ignored\n"));
       return true;
     }
   i_shdr = &elf_section_data (asec->output_section)->this_hdr;
@@ -1741,84 +1741,82 @@ write_gitbom (bfd *abfd)
 
   /* SHA1 entry.  */
   e_note1 = (Elf_External_Note *) contents;
-  size1 = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size1 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
   size1 = (size1 + 3) & -(bfd_size_type) 4;
-  gitbom_bits_sha1 = contents + size1;
+  omnibor_bits_sha1 = contents + size1;
 
   /* Clear the SHA1 gitoid field.  */
-  memset (gitbom_bits_sha1, 0, GITOID_LENGTH_SHA1);
+  memset (omnibor_bits_sha1, 0, GITOID_LENGTH_SHA1);
 
-  bfd_h_put_32 (abfd, sizeof "GITBOM", &e_note1->namesz);
+  bfd_h_put_32 (abfd, sizeof "OMNIBOR", &e_note1->namesz);
   bfd_h_put_32 (abfd, GITOID_LENGTH_SHA1, &e_note1->descsz);
-  bfd_h_put_32 (abfd, NT_GITBOM_SHA1, &e_note1->type);
-  memcpy (e_note1->name, "GITBOM", sizeof "GITBOM");
-  memcpy (e_note1->name + sizeof "GITBOM", "\0", 1);
-  memcpy (gitbom_bits_sha1, gitoid_sha1, GITOID_LENGTH_SHA1);
+  bfd_h_put_32 (abfd, NT_GITOID_SHA1, &e_note1->type);
+  memcpy (e_note1->name, "OMNIBOR", sizeof "OMNIBOR");
+  memcpy (omnibor_bits_sha1, gitoid_sha1, GITOID_LENGTH_SHA1);
 
   /* SHA256 entry.  */
   e_note2 = (Elf_External_Note *) (contents + 20 + GITOID_LENGTH_SHA1);
-  size2 = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size2 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
   size2 = (size2 + 3) & -(bfd_size_type) 4;
-  gitbom_bits_sha256 = contents + 20 + GITOID_LENGTH_SHA1 + size2;
+  omnibor_bits_sha256 = contents + 20 + GITOID_LENGTH_SHA1 + size2;
 
   /* Clear the SHA256 gitoid field.  */
-  memset (gitbom_bits_sha256, 0, GITOID_LENGTH_SHA256);
+  memset (omnibor_bits_sha256, 0, GITOID_LENGTH_SHA256);
 
-  bfd_h_put_32 (abfd, sizeof "GITBOM", &e_note2->namesz);
+  bfd_h_put_32 (abfd, sizeof "OMNIBOR", &e_note2->namesz);
   bfd_h_put_32 (abfd, GITOID_LENGTH_SHA256, &e_note2->descsz);
-  bfd_h_put_32 (abfd, NT_GITBOM_SHA256, &e_note2->type);
-  memcpy (e_note2->name, "GITBOM", sizeof "GITBOM");
-  memcpy (e_note2->name + sizeof "GITBOM", "\0", 1);
-  memcpy (gitbom_bits_sha256, gitoid_sha256, GITOID_LENGTH_SHA256);
+  bfd_h_put_32 (abfd, NT_GITOID_SHA256, &e_note2->type);
+  memcpy (e_note2->name, "OMNIBOR", sizeof "OMNIBOR");
+  memcpy (omnibor_bits_sha256, gitoid_sha256, GITOID_LENGTH_SHA256);
 
   position = i_shdr->sh_offset + asec->output_offset;
   size = asec->size;
 
-  if (getenv ("GITBOM_NO_EMBED") == NULL)
+  if (getenv ("OMNIBOR_NO_EMBED") == NULL)
     {
-      free (ldelf_emit_note_gitbom_sha1);
-      free (ldelf_emit_note_gitbom_sha256);
-      ldelf_emit_note_gitbom_sha1 = NULL;
-      ldelf_emit_note_gitbom_sha256 = NULL;
+      free (ldelf_emit_note_omnibor_sha1);
+      free (ldelf_emit_note_omnibor_sha256);
+      ldelf_emit_note_omnibor_sha1 = NULL;
+      ldelf_emit_note_omnibor_sha256 = NULL;
     }
   return (bfd_seek (abfd, position, SEEK_SET) == 0
 	  && bfd_bwrite (contents, size, abfd) == size);
 }
 
-/* Make .note.gitbom section.  */
+/* Make .note.omnibor section.  */
 
 bool
-ldelf_setup_gitbom (bfd *ibfd)
+ldelf_setup_omnibor (bfd *ibfd)
 {
   asection *s;
   bfd_size_type size1, size256;
   flagword flags;
 
-  size1 = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size1 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
   size1 = (size1 + 3) & -(bfd_size_type) 4;
   size1 += GITOID_LENGTH_SHA1;
-  size256 = offsetof (Elf_External_Note, name[sizeof "GITBOM"]);
+  size256 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
   size256 = (size256 + 3) & -(bfd_size_type) 4;
   size256 += GITOID_LENGTH_SHA256;
 
   flags = (SEC_ALLOC | SEC_LOAD | SEC_IN_MEMORY
 	   | SEC_LINKER_CREATED | SEC_READONLY | SEC_DATA);
-  s = bfd_make_section_anyway_with_flags (ibfd, ".note.gitbom",
+  s = bfd_make_section_anyway_with_flags (ibfd, ".note.omnibor",
 					  flags);
   if (s != NULL && bfd_set_section_alignment (s, 2))
     {
       struct elf_obj_tdata *t = elf_tdata (link_info.output_bfd);
-      t->o->gitbom.after_write_object_contents = &write_gitbom;
-      t->o->gitbom.gitoid_sha1 = &ldelf_emit_note_gitbom_sha1;
-      t->o->gitbom.gitoid_sha256 = &ldelf_emit_note_gitbom_sha256;
-      t->o->gitbom.sec = s;
+      t->o->omnibor.after_write_object_contents = &write_omnibor;
+      t->o->omnibor.gitoid_sha1 = &ldelf_emit_note_omnibor_sha1;
+      t->o->omnibor.gitoid_sha256 = &ldelf_emit_note_omnibor_sha256;
+      t->o->omnibor.sec = s;
       elf_section_type (s) = SHT_NOTE;
       s->size = size1 + size256;
       return true;
     }
 
-  einfo (_("%P: warning: cannot create .note.gitbom section,"
-	   " --gitbom ignored\n"));
+  einfo (_("%P: warning: cannot create .note.omnibor section,"
+	   " --omnibor ignored\n"));
   return false;
 }
 

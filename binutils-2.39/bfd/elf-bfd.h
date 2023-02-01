@@ -1918,14 +1918,14 @@ struct output_elf_obj_tdata
     asection *sec;
   } build_id;
 
-  /* NT_GITBOM_SHA1 and NT_GITBOM_SHA256 note type info.  */
+  /* NT_GITOID_SHA1 and NT_GITOID_SHA256 note type info.  */
   struct
   {
     bool (*after_write_object_contents) (bfd *);
     char **gitoid_sha1;
     char **gitoid_sha256;
     asection *sec;
-  } gitbom;
+  } omnibor;
 
   /* FDO_PACKAGING_METADATA note type info.  */
   struct

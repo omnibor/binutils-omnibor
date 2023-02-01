@@ -284,9 +284,9 @@ typedef struct
 
   char *dependency_file;
 
-  /* The path to the directory where GitBOM information should be
-     placed, unless GITBOM_DIR environment variable is set.  */
-  char *gitbom_dir;
+  /* The path to the directory where the OmniBOR information should be
+     placed, unless OMNIBOR_DIR environment variable is set.  */
+  char *omnibor_dir;
 
   unsigned int split_by_reloc;
   bfd_size_type split_by_file;

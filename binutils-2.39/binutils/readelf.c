@@ -19555,15 +19555,15 @@ get_gnu_elf_note_type (unsigned e_type)
 }
 
 static const char *
-get_gitbom_elf_note_type (unsigned e_type)
+get_omnibor_elf_note_type (unsigned e_type)
 {
-  /* NB/ Keep this switch statement in sync with print_gitbom_note ().  */
+  /* NB/ Keep this switch statement in sync with print_omnibor_note ().  */
   switch (e_type)
     {
-    case NT_GITBOM_SHA1:
-      return _("NT_GITBOM (SHA1 GITOID)");
-    case NT_GITBOM_SHA256:
-      return _("NT_GITBOM (SHA256 GITOID)");
+    case NT_GITOID_SHA1:
+      return _("NT_GITOID (SHA1 GITOID)");
+    case NT_GITOID_SHA256:
+      return _("NT_GITOID (SHA256 GITOID)");
     default:
       {
 	static char buff[64];
@@ -20312,12 +20312,12 @@ print_gnu_note (Filedata * filedata, Elf_Internal_Note *pnote)
 }
 
 static bool
-print_gitbom_note (Elf_Internal_Note *pnote)
+print_omnibor_note (Elf_Internal_Note *pnote)
 {
-  /* NB/ Keep this switch statement in sync with get_gitbom_elf_note_type ().  */
+  /* NB/ Keep this switch statement in sync with get_omnibor_elf_note_type ().  */
   switch (pnote->type)
     {
-    case NT_GITBOM_SHA1:
+    case NT_GITOID_SHA1:
       {
 	unsigned long i;
 
@@ -20328,7 +20328,7 @@ print_gitbom_note (Elf_Internal_Note *pnote)
       }
       break;
 
-    case NT_GITBOM_SHA256:
+    case NT_GITOID_SHA256:
       {
 	unsigned long i;
 
@@ -21554,9 +21554,9 @@ process_note (Elf_Internal_Note *  pnote,
     /* GNU-specific object file notes.  */
     nt = get_gnu_elf_note_type (pnote->type);
 
-  else if (startswith (pnote->namedata, "GITBOM"))
-    /* GitBOM-specific object file notes.  */
-    nt = get_gitbom_elf_note_type (pnote->type);
+  else if (startswith (pnote->namedata, "OMNIBOR"))
+    /* OmniBOR-specific object file notes.  */
+    nt = get_omnibor_elf_note_type (pnote->type);
 
   else if (startswith (pnote->namedata, "AMDGPU"))
     /* AMDGPU-specific object file notes.  */
@@ -21621,8 +21621,8 @@ process_note (Elf_Internal_Note *  pnote,
     return print_ia64_vms_note (pnote);
   else if (startswith (pnote->namedata, "GNU"))
     return print_gnu_note (filedata, pnote);
-  else if (startswith (pnote->namedata, "GITBOM"))
-    return print_gitbom_note (pnote);
+  else if (startswith (pnote->namedata, "OMNIBOR"))
+    return print_omnibor_note (pnote);
   else if (startswith (pnote->namedata, "stapsdt"))
     return print_stapsdt_note (pnote);
   else if (startswith (pnote->namedata, "CORE"))

@@ -64,7 +64,7 @@
 #define TARGET_SYSTEM_ROOT ""
 #endif
 
-static char *gitbom_dir;
+static char *omnibor_dir;
 
 /* EXPORTS */
 
@@ -219,36 +219,36 @@ write_dependency_file (void)
   fclose (out);
 }
 
-/* GitBOM struct which contains the names of the directories from the path
-   to the directory where the GitBOM information is to be stored.  */
+/* OmniBOR struct which contains the names of the directories from the path
+   to the directory where the OmniBOR information is to be stored.  */
 
-struct gitbom_dirs
+struct omnibor_dirs
 {
-  struct gitbom_dirs *next;
+  struct omnibor_dirs *next;
   DIR *dir;
 };
 
-static struct gitbom_dirs *gitbom_dirs_head, *gitbom_dirs_tail;
+static struct omnibor_dirs *omnibor_dirs_head, *omnibor_dirs_tail;
 
 static void
-gitbom_add_to_dirs (DIR **directory)
+omnibor_add_to_dirs (DIR **directory)
 {
-  struct gitbom_dirs *elem
-    = (struct gitbom_dirs *) xmalloc (sizeof (*elem));
+  struct omnibor_dirs *elem
+    = (struct omnibor_dirs *) xmalloc (sizeof (*elem));
   elem->dir = *directory;
   elem->next = NULL;
-  if (gitbom_dirs_head == NULL)
-    gitbom_dirs_head = elem;
+  if (omnibor_dirs_head == NULL)
+    omnibor_dirs_head = elem;
   else
-    gitbom_dirs_tail->next = elem;
-  gitbom_dirs_tail = elem;
+    omnibor_dirs_tail->next = elem;
+  omnibor_dirs_tail = elem;
 }
 
 /* Return the position of the first occurrence after start_pos position
    of char c in str string (start_pos is the first position to check).  */
 
 static int
-gitbom_find_char_from_pos (unsigned start_pos, char c, const char *str)
+omnibor_find_char_from_pos (unsigned start_pos, char c, const char *str)
 {
   for (unsigned ix = start_pos; ix < strlen (str); ix++)
     if (str[ix] == c)
@@ -261,7 +261,7 @@ gitbom_find_char_from_pos (unsigned start_pos, char c, const char *str)
    str string.  */
 
 static int
-gitbom_find_last_of (char c, const char *str)
+omnibor_find_last_of (char c, const char *str)
 {
   int ret = -1;
   for (unsigned ix = 0; ix < strlen (str); ix++)
@@ -274,7 +274,7 @@ gitbom_find_last_of (char c, const char *str)
 /* Append the string str2 to the end of the string str1.  */
 
 void
-gitbom_append_to_string (char **str1, const char *str2,
+omnibor_append_to_string (char **str1, const char *str2,
 			 unsigned long len1, unsigned long len2)
 {
   *str1 = (char *) xrealloc
@@ -285,7 +285,7 @@ gitbom_append_to_string (char **str1, const char *str2,
 /* Add the string str2 as a prefix to the string str1.  */
 
 static void
-gitbom_add_prefix_to_string (char **str1, const char *str2)
+omnibor_add_prefix_to_string (char **str1, const char *str2)
 {
   char *temp = (char *) xcalloc
 	((strlen (*str1) + strlen (str2) + 1), sizeof (char));
@@ -301,7 +301,7 @@ gitbom_add_prefix_to_string (char **str1, const char *str2)
    the start position and put it in the str1 string.  */
 
 static void
-gitbom_substr (char **str1, unsigned start, unsigned len, const char *str2)
+omnibor_substr (char **str1, unsigned start, unsigned len, const char *str2)
 {
   *str1 = (char *) xrealloc
 	(*str1, sizeof (char) * (len + 1));
@@ -312,7 +312,7 @@ gitbom_substr (char **str1, unsigned start, unsigned len, const char *str2)
 /* Set the string str1 to have the contents of the string str2.  */
 
 static void
-gitbom_set_contents (char **str1, const char *str2, unsigned long len)
+omnibor_set_contents (char **str1, const char *str2, unsigned long len)
 {
   *str1 = (char *) xrealloc
 	(*str1, sizeof (char) * (len + 1));
@@ -320,29 +320,29 @@ gitbom_set_contents (char **str1, const char *str2, unsigned long len)
 }
 
 /* Get the path of the directory where the resulting executable will be
-   stored, because the GitBOM information should be stored there as well,
-   in the default case (when GITBOM_DIR environment variable is not set
-   and --gitbom=<arg> is not used, but --gitbom is used instead).  */
+   stored, because the OmniBOR information should be stored there as well,
+   in the default case (when OMNIBOR_DIR environment variable is not set
+   and --omnibor=<arg> is not used, but --omnibor is used instead).  */
 
 static void
-gitbom_get_destdir (const char *gcc_opts, char **res)
+omnibor_get_destdir (const char *gcc_opts, char **res)
 {
   char *path = (char *) xcalloc (1, sizeof (char));
   char *temp = (char *) xcalloc (1, sizeof (char));
 
   int old_i = 0, i = 0;
-  while ((i = gitbom_find_char_from_pos (i, ' ', gcc_opts)) != -1)
+  while ((i = omnibor_find_char_from_pos (i, ' ', gcc_opts)) != -1)
     {
-      gitbom_substr (&temp, old_i, i - old_i, gcc_opts);
+      omnibor_substr (&temp, old_i, i - old_i, gcc_opts);
       if (strcmp ("'-o'", temp) == 0)
         {
           i = i + 1;
 	  old_i = i;
 
-          if ((i = gitbom_find_char_from_pos (i, ' ', gcc_opts)) != -1)
+          if ((i = omnibor_find_char_from_pos (i, ' ', gcc_opts)) != -1)
             {
-              gitbom_substr (&temp, old_i + 1, i - old_i - 2, gcc_opts);
-              gitbom_set_contents (&path, temp, strlen (temp));
+              omnibor_substr (&temp, old_i + 1, i - old_i - 2, gcc_opts);
+              omnibor_set_contents (&path, temp, strlen (temp));
 	      i = i + 1;
 	      old_i = i;
             }
@@ -360,20 +360,20 @@ gitbom_get_destdir (const char *gcc_opts, char **res)
 
   /* If there was a valid '-o' option, parse the directory part of the path
      and put it in the res parameter.  */
-  if ((i = gitbom_find_last_of ('/', path)) != -1)
+  if ((i = omnibor_find_last_of ('/', path)) != -1)
     {
-      gitbom_substr (&temp, 0, i, path);
-      gitbom_set_contents (res, temp, strlen (temp));
+      omnibor_substr (&temp, 0, i, path);
+      omnibor_set_contents (res, temp, strlen (temp));
     }
   else
-    gitbom_set_contents (res, "", 0);
+    omnibor_set_contents (res, "", 0);
 
   free (path);
   free (temp);
 }
 
 /* Open all the directories from the path specified in the res_dir
-   parameter and put them in the gitbom_dirs_head list.  Also create
+   parameter and put them in the omnibor_dirs_head list.  Also create
    the directories which do not already exist.  */
 
 static DIR *
@@ -382,7 +382,7 @@ open_all_directories_in_path (const char *res_dir)
   char *path = (char *) xcalloc (1, sizeof (char));
   char *dir_name = (char *) xcalloc (1, sizeof (char));
 
-  int old_p = 0, p = gitbom_find_char_from_pos (0, '/', res_dir);
+  int old_p = 0, p = omnibor_find_char_from_pos (0, '/', res_dir);
   int dfd, absolute = 0;
   DIR *dir = NULL;
 
@@ -396,19 +396,19 @@ open_all_directories_in_path (const char *res_dir)
   else if (p == 0)
     {
       absolute = 1;
-      gitbom_append_to_string (&path, "/", strlen (path), strlen ("/"));
+      omnibor_append_to_string (&path, "/", strlen (path), strlen ("/"));
       /* Opening a root directory because an absolute path is specified.  */
       dir = opendir (path);
       dfd = dirfd (dir);
 
-      gitbom_add_to_dirs (&dir);
+      omnibor_add_to_dirs (&dir);
       p = p + 1;
       old_p = p;
 
       /* Path is of format "/<dir>" where dir does not exist.  This point can be
          reached only if <dir> could not be created in the root folder, so it is
          considered as an illegal path.  */
-      if ((p = gitbom_find_char_from_pos (p, '/', res_dir)) == -1)
+      if ((p = omnibor_find_char_from_pos (p, '/', res_dir)) == -1)
         {
 	  free (dir_name);
 	  free (path);
@@ -420,7 +420,7 @@ open_all_directories_in_path (const char *res_dir)
         {
           p = p + 1;
           old_p = p;
-          p = gitbom_find_char_from_pos (p, '/', res_dir);
+          p = omnibor_find_char_from_pos (p, '/', res_dir);
         }
 
       if (p == -1)
@@ -431,8 +431,8 @@ open_all_directories_in_path (const char *res_dir)
 	}
     }
 
-  gitbom_substr (&dir_name, old_p, p - old_p, res_dir);
-  gitbom_append_to_string (&path, dir_name, strlen (path), strlen (dir_name));
+  omnibor_substr (&dir_name, old_p, p - old_p, res_dir);
+  omnibor_append_to_string (&path, dir_name, strlen (path), strlen (dir_name));
 
   if ((dir = opendir (path)) == NULL)
     {
@@ -452,27 +452,27 @@ open_all_directories_in_path (const char *res_dir)
 
   dfd = dirfd (dir);
 
-  gitbom_add_to_dirs (&dir);
+  omnibor_add_to_dirs (&dir);
   p = p + 1;
   old_p = p;
 
-  while ((p = gitbom_find_char_from_pos (p, '/', res_dir)) != -1)
+  while ((p = omnibor_find_char_from_pos (p, '/', res_dir)) != -1)
     {
       /* Process sequences of adjacent occurrences of character '/'.  */
       while (old_p == p)
         {
           p = p + 1;
           old_p = p;
-          p = gitbom_find_char_from_pos (p, '/', res_dir);
+          p = omnibor_find_char_from_pos (p, '/', res_dir);
         }
 
       if (p == -1)
         break;
 
-      gitbom_substr (&dir_name, old_p, p - old_p, res_dir);
-      gitbom_append_to_string (&path, "/", strlen (path), strlen ("/"));
-      gitbom_append_to_string (&path, dir_name, strlen (path),
-			       strlen (dir_name));
+      omnibor_substr (&dir_name, old_p, p - old_p, res_dir);
+      omnibor_append_to_string (&path, "/", strlen (path), strlen ("/"));
+      omnibor_append_to_string (&path, dir_name, strlen (path),
+				strlen (dir_name));
 
       if ((dir = opendir (path)) == NULL)
         {
@@ -489,17 +489,17 @@ open_all_directories_in_path (const char *res_dir)
 
       dfd = dirfd (dir);
 
-      gitbom_add_to_dirs (&dir);
+      omnibor_add_to_dirs (&dir);
       p = p + 1;
       old_p = p;
     }
 
   if ((unsigned) old_p < strlen (res_dir))
     {
-      gitbom_substr (&dir_name, old_p, strlen (res_dir) - old_p, res_dir);
-      gitbom_append_to_string (&path, "/", strlen (path), strlen ("/"));
-      gitbom_append_to_string (&path, dir_name, strlen (path),
-			       strlen (dir_name));
+      omnibor_substr (&dir_name, old_p, strlen (res_dir) - old_p, res_dir);
+      omnibor_append_to_string (&path, "/", strlen (path), strlen ("/"));
+      omnibor_append_to_string (&path, dir_name, strlen (path),
+				strlen (dir_name));
 
       if ((dir = opendir (path)) == NULL)
         {
@@ -507,7 +507,7 @@ open_all_directories_in_path (const char *res_dir)
           dir = opendir (path);
         }
 
-      gitbom_add_to_dirs (&dir);
+      omnibor_add_to_dirs (&dir);
     }
 
   free (dir_name);
@@ -515,13 +515,13 @@ open_all_directories_in_path (const char *res_dir)
   return dir;
 }
 
-/* Close all the directories from the gitbom_dirs_head list.  This function
+/* Close all the directories from the omnibor_dirs_head list.  This function
    should be called after calling the function open_all_directories_in_path.  */
 
 static void
 close_all_directories_in_path (void)
 {
-  struct gitbom_dirs *dir = gitbom_dirs_head, *old = NULL;
+  struct omnibor_dirs *dir = omnibor_dirs_head, *old = NULL;
   while (dir != NULL)
     {
       closedir (dir->dir);
@@ -530,14 +530,14 @@ close_all_directories_in_path (void)
       free (old);
     }
 
-  gitbom_dirs_head = NULL;
-  gitbom_dirs_tail = NULL;
+  omnibor_dirs_head = NULL;
+  omnibor_dirs_tail = NULL;
 }
 
 /* Calculate the SHA1 gitoid using the contents of the given file.  */
 
 void
-calculate_sha1_gitbom (FILE *dep_file, unsigned char resblock[])
+calculate_sha1_omnibor (FILE *dep_file, unsigned char resblock[])
 {
   fseek (dep_file, 0L, SEEK_END);
   long file_size = ftell (dep_file);
@@ -549,11 +549,11 @@ calculate_sha1_gitbom (FILE *dep_file, unsigned char resblock[])
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&init_data, "blob ", strlen (init_data),
-			   strlen ("blob "));
-  gitbom_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
-			   strlen (buff_for_file_size));
-  gitbom_append_to_string (&init_data, "\0", strlen (init_data), 1);
+  omnibor_append_to_string (&init_data, "blob ", strlen (init_data),
+			    strlen ("blob "));
+  omnibor_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
+			    strlen (buff_for_file_size));
+  omnibor_append_to_string (&init_data, "\0", strlen (init_data), 1);
 
   char *file_contents = (char *) xcalloc (file_size, sizeof (char));
   fread (file_contents, 1, file_size, dep_file);
@@ -575,8 +575,8 @@ calculate_sha1_gitbom (FILE *dep_file, unsigned char resblock[])
 /* Calculate the SHA1 gitoid using the given contents.  */
 
 void
-calculate_sha1_gitbom_with_contents (char *contents,
-				     unsigned char resblock[])
+calculate_sha1_omnibor_with_contents (char *contents,
+				      unsigned char resblock[])
 {
   long file_size = strlen (contents);
 
@@ -586,11 +586,11 @@ calculate_sha1_gitbom_with_contents (char *contents,
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&init_data, "blob ", strlen (init_data),
-			   strlen ("blob "));
-  gitbom_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
-			   strlen (buff_for_file_size));
-  gitbom_append_to_string (&init_data, "\0", strlen (init_data), 1);
+  omnibor_append_to_string (&init_data, "blob ", strlen (init_data),
+			    strlen ("blob "));
+  omnibor_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
+			    strlen (buff_for_file_size));
+  omnibor_append_to_string (&init_data, "\0", strlen (init_data), 1);
 
   /* Calculate the hash.  */
   struct sha1_ctx ctx;
@@ -608,7 +608,7 @@ calculate_sha1_gitbom_with_contents (char *contents,
 /* Calculate the SHA256 gitoid using the contents of the given file.  */
 
 void
-calculate_sha256_gitbom (FILE *dep_file, unsigned char resblock[])
+calculate_sha256_omnibor (FILE *dep_file, unsigned char resblock[])
 {
   fseek (dep_file, 0L, SEEK_END);
   long file_size = ftell (dep_file);
@@ -620,11 +620,11 @@ calculate_sha256_gitbom (FILE *dep_file, unsigned char resblock[])
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&init_data, "blob ", strlen (init_data),
-			   strlen ("blob "));
-  gitbom_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
-			   strlen (buff_for_file_size));
-  gitbom_append_to_string (&init_data, "\0", strlen (init_data), 1);
+  omnibor_append_to_string (&init_data, "blob ", strlen (init_data),
+			    strlen ("blob "));
+  omnibor_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
+			    strlen (buff_for_file_size));
+  omnibor_append_to_string (&init_data, "\0", strlen (init_data), 1);
 
   char *file_contents = (char *) xcalloc (file_size, sizeof (char));
   fread (file_contents, 1, file_size, dep_file);
@@ -646,8 +646,8 @@ calculate_sha256_gitbom (FILE *dep_file, unsigned char resblock[])
 /* Calculate the SHA256 gitoid using the given contents.  */
 
 void
-calculate_sha256_gitbom_with_contents (char *contents,
-				       unsigned char resblock[])
+calculate_sha256_omnibor_with_contents (char *contents,
+					unsigned char resblock[])
 {
   long file_size = strlen (contents);
 
@@ -657,11 +657,11 @@ calculate_sha256_gitbom_with_contents (char *contents,
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&init_data, "blob ", strlen (init_data),
-			   strlen ("blob "));
-  gitbom_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
-			   strlen (buff_for_file_size));
-  gitbom_append_to_string (&init_data, "\0", strlen (init_data), 1);
+  omnibor_append_to_string (&init_data, "blob ", strlen (init_data),
+			    strlen ("blob "));
+  omnibor_append_to_string (&init_data, buff_for_file_size, strlen (init_data),
+			    strlen (buff_for_file_size));
+  omnibor_append_to_string (&init_data, "\0", strlen (init_data), 1);
 
   /* Calculate the hash.  */
   struct sha256_ctx ctx;
@@ -676,59 +676,59 @@ calculate_sha256_gitbom_with_contents (char *contents,
   free (init_data);
 }
 
-/* GitBOM dependency file struct which contains its SHA1 gitoid, its SHA256
+/* OmniBOR dependency file struct which contains its SHA1 gitoid, its SHA256
    gitoid and its filename.  */
 
-struct gitbom_deps
+struct omnibor_deps
 {
-  struct gitbom_deps *next;
+  struct omnibor_deps *next;
   char *sha1_contents;
   char *sha256_contents;
   char *name;
 };
 
-static struct gitbom_deps *gitbom_deps_head, *gitbom_deps_tail;
+static struct omnibor_deps *omnibor_deps_head, *omnibor_deps_tail;
 
 static void
-gitbom_add_to_deps (char *filename, char *sha1_contents, char *sha256_contents,
-		    unsigned long sha1_contents_len,
-		    unsigned long sha256_contents_len)
+omnibor_add_to_deps (char *filename, char *sha1_contents, char *sha256_contents,
+		     unsigned long sha1_contents_len,
+		     unsigned long sha256_contents_len)
 {
-  struct gitbom_deps *elem
-    = (struct gitbom_deps *) xmalloc (sizeof (*elem));
+  struct omnibor_deps *elem
+    = (struct omnibor_deps *) xmalloc (sizeof (*elem));
   elem->name = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&elem->name, filename, strlen (elem->name),
-			   strlen (filename));
+  omnibor_append_to_string (&elem->name, filename, strlen (elem->name),
+			    strlen (filename));
   if (sha1_contents != NULL)
     {
       elem->sha1_contents = (char *) xcalloc (1, sizeof (char));
-      gitbom_append_to_string (&elem->sha1_contents, sha1_contents,
-			       strlen (elem->sha1_contents),
-			       sha1_contents_len);
+      omnibor_append_to_string (&elem->sha1_contents, sha1_contents,
+				strlen (elem->sha1_contents),
+				sha1_contents_len);
     }
   else
     elem->sha1_contents = NULL;
   if (sha256_contents != NULL)
     {
       elem->sha256_contents = (char *) xcalloc (1, sizeof (char));
-      gitbom_append_to_string (&elem->sha256_contents, sha256_contents,
-			       strlen (elem->sha256_contents),
-			       sha256_contents_len);
+      omnibor_append_to_string (&elem->sha256_contents, sha256_contents,
+				strlen (elem->sha256_contents),
+				sha256_contents_len);
     }
   else
     elem->sha256_contents = NULL;
   elem->next = NULL;
-  if (gitbom_deps_head == NULL)
-    gitbom_deps_head = elem;
+  if (omnibor_deps_head == NULL)
+    omnibor_deps_head = elem;
   else
-    gitbom_deps_tail->next = elem;
-  gitbom_deps_tail = elem;
+    omnibor_deps_tail->next = elem;
+  omnibor_deps_tail = elem;
 }
 
 static void
-gitbom_clear_deps (void)
+omnibor_clear_deps (void)
 {
-  struct gitbom_deps *dep = gitbom_deps_head, *old = NULL;
+  struct omnibor_deps *dep = omnibor_deps_head, *old = NULL;
   while (dep != NULL)
     {
       free (dep->name);
@@ -741,34 +741,34 @@ gitbom_clear_deps (void)
       free (old);
     }
 
-  gitbom_deps_head = NULL;
-  gitbom_deps_tail = NULL;
+  omnibor_deps_head = NULL;
+  omnibor_deps_tail = NULL;
 }
 
-static struct gitbom_deps *
-gitbom_is_dep_present (const char *name)
+static struct omnibor_deps *
+omnibor_is_dep_present (const char *name)
 {
-  struct gitbom_deps *dep;
-  for (dep = gitbom_deps_head; dep != NULL; dep = dep->next)
+  struct omnibor_deps *dep;
+  for (dep = omnibor_deps_head; dep != NULL; dep = dep->next)
     if (strcmp (name, dep->name) == 0)
       return dep;
 
   return NULL;
 }
 
-/* Sort the contents of the GitBOM Document file using the selection sort
-   algorithm.  The parameter ind should be either 0 (sort the SHA1 GitBOM
-   Document file) or 1 (sort the SHA256 GitBOM Document file).  */
+/* Sort the contents of the OmniBOR Document file using the selection sort
+   algorithm.  The parameter ind should be either 0 (sort the SHA1 OmniBOR
+   Document file) or 1 (sort the SHA256 OmniBOR Document file).  */
 
 static void
-gitbom_sort (unsigned int ind)
+omnibor_sort (unsigned int ind)
 {
-  if (gitbom_deps_head == NULL || gitbom_deps_head->next == NULL
+  if (omnibor_deps_head == NULL || omnibor_deps_head->next == NULL
       || (ind != 0 && ind != 1))
     return;
 
-  struct gitbom_deps *dep1, *dep2, *curr;
-  for (dep1 = gitbom_deps_head; dep1 != NULL; dep1 = dep1->next)
+  struct omnibor_deps *dep1, *dep2, *curr;
+  for (dep1 = omnibor_deps_head; dep1 != NULL; dep1 = dep1->next)
     {
       curr = dep1;
       for (dep2 = dep1->next; dep2 != NULL; dep2 = dep2->next)
@@ -794,32 +794,32 @@ gitbom_sort (unsigned int ind)
 	  if (dep1->sha256_contents != NULL)
 	    temp_sha256_contents = (char *) xcalloc (1, sizeof (char));
 
-          gitbom_set_contents (&temp_name, dep1->name,
-			       strlen (dep1->name));
+          omnibor_set_contents (&temp_name, dep1->name,
+				strlen (dep1->name));
           if (dep1->sha1_contents != NULL)
-            gitbom_set_contents (&temp_sha1_contents, dep1->sha1_contents,
-			         2 * GITOID_LENGTH_SHA1);
+            omnibor_set_contents (&temp_sha1_contents, dep1->sha1_contents,
+				  2 * GITOID_LENGTH_SHA1);
           if (dep1->sha256_contents != NULL)
-	    gitbom_set_contents (&temp_sha256_contents, dep1->sha256_contents,
-				 2 * GITOID_LENGTH_SHA256);
+	    omnibor_set_contents (&temp_sha256_contents, dep1->sha256_contents,
+				  2 * GITOID_LENGTH_SHA256);
 
-          gitbom_set_contents (&dep1->name, curr->name,
-			       strlen (curr->name));
+          omnibor_set_contents (&dep1->name, curr->name,
+				strlen (curr->name));
           if (dep1->sha1_contents != NULL)
-	    gitbom_set_contents (&dep1->sha1_contents, curr->sha1_contents,
-				 2 * GITOID_LENGTH_SHA1);
+	    omnibor_set_contents (&dep1->sha1_contents, curr->sha1_contents,
+				  2 * GITOID_LENGTH_SHA1);
           if (dep1->sha256_contents != NULL)
-	    gitbom_set_contents (&dep1->sha256_contents, curr->sha256_contents,
-				 2 * GITOID_LENGTH_SHA256);
+	    omnibor_set_contents (&dep1->sha256_contents, curr->sha256_contents,
+				  2 * GITOID_LENGTH_SHA256);
 
-          gitbom_set_contents (&curr->name, temp_name,
-			       strlen (temp_name));
+          omnibor_set_contents (&curr->name, temp_name,
+				strlen (temp_name));
           if (dep1->sha1_contents != NULL)
-	    gitbom_set_contents (&curr->sha1_contents, temp_sha1_contents,
-				 2 * GITOID_LENGTH_SHA1);
+	    omnibor_set_contents (&curr->sha1_contents, temp_sha1_contents,
+				  2 * GITOID_LENGTH_SHA1);
           if (dep1->sha256_contents != NULL)
-	    gitbom_set_contents (&curr->sha256_contents, temp_sha256_contents,
-				 2 * GITOID_LENGTH_SHA256);
+	    omnibor_set_contents (&curr->sha256_contents, temp_sha256_contents,
+				  2 * GITOID_LENGTH_SHA256);
 
 	  if (dep1->sha256_contents != NULL)
 	    free (temp_sha256_contents);
@@ -830,62 +830,62 @@ gitbom_sort (unsigned int ind)
     }
 }
 
-/* GitBOM ".note.gitbom" section struct which contains the filename of the
-   dependency and the contents of its ".note.gitbom" section (the SHA1 gitoid
+/* OmniBOR ".note.omnibor" section struct which contains the filename of the
+   dependency and the contents of its ".note.omnibor" section (the SHA1 gitoid
    and the SHA256 gitoid).  */
 
-struct gitbom_bom_sections
+struct omnibor_note_sections
 {
-  struct gitbom_bom_sections *next;
+  struct omnibor_note_sections *next;
   char *name;
   char *sha1_contents;
   char *sha256_contents;
 };
 
-struct gitbom_bom_sections *gitbom_bom_sections_head,
-			   *gitbom_bom_sections_tail;
+struct omnibor_note_sections *omnibor_note_sections_head,
+			     *omnibor_note_sections_tail;
 
 void
-gitbom_add_to_bom_sections (const char *filename, char *sha1_sec_contents,
-			    char *sha256_sec_contents,
-			    unsigned long sha1_sec_contents_len,
-			    unsigned long sha256_sec_contents_len)
+omnibor_add_to_note_sections (const char *filename, char *sha1_sec_contents,
+			      char *sha256_sec_contents,
+			      unsigned long sha1_sec_contents_len,
+			      unsigned long sha256_sec_contents_len)
 {
-  struct gitbom_bom_sections *elem
-    = (struct gitbom_bom_sections *) xmalloc (sizeof (*elem));
+  struct omnibor_note_sections *elem
+    = (struct omnibor_note_sections *) xmalloc (sizeof (*elem));
   elem->name = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&elem->name, filename, strlen (elem->name),
-			   strlen (filename));
+  omnibor_append_to_string (&elem->name, filename, strlen (elem->name),
+			    strlen (filename));
   if (sha1_sec_contents != NULL)
     {
       elem->sha1_contents = (char *) xcalloc (1, sizeof (char));
-      gitbom_append_to_string (&elem->sha1_contents, sha1_sec_contents,
-			       strlen (elem->sha1_contents),
-			       sha1_sec_contents_len);
+      omnibor_append_to_string (&elem->sha1_contents, sha1_sec_contents,
+				strlen (elem->sha1_contents),
+				sha1_sec_contents_len);
     }
   else
     elem->sha1_contents = NULL;
   if (sha256_sec_contents != NULL)
     {
       elem->sha256_contents = (char *) xcalloc (1, sizeof (char));
-      gitbom_append_to_string (&elem->sha256_contents, sha256_sec_contents,
-			       strlen (elem->sha256_contents),
-			       sha256_sec_contents_len);
+      omnibor_append_to_string (&elem->sha256_contents, sha256_sec_contents,
+				strlen (elem->sha256_contents),
+				sha256_sec_contents_len);
     }
   else
     elem->sha256_contents = NULL;
   elem->next = NULL;
-  if (gitbom_bom_sections_head == NULL)
-    gitbom_bom_sections_head = elem;
+  if (omnibor_note_sections_head == NULL)
+    omnibor_note_sections_head = elem;
   else
-    gitbom_bom_sections_tail->next = elem;
-  gitbom_bom_sections_tail = elem;
+    omnibor_note_sections_tail->next = elem;
+  omnibor_note_sections_tail = elem;
 }
 
 static void
-gitbom_clear_bom_sections (void)
+omnibor_clear_note_sections (void)
 {
-  struct gitbom_bom_sections *dep = gitbom_bom_sections_head, *old = NULL;
+  struct omnibor_note_sections *dep = omnibor_note_sections_head, *old = NULL;
   while (dep != NULL)
     {
       free (dep->name);
@@ -898,26 +898,26 @@ gitbom_clear_bom_sections (void)
       free (old);
     }
 
-  gitbom_bom_sections_head = NULL;
-  gitbom_bom_sections_tail = NULL;
+  omnibor_note_sections_head = NULL;
+  omnibor_note_sections_tail = NULL;
 }
 
-/* If the dependency with the given name is not in the gitbom_bom_sections_head
+/* If the dependency with the given name is not in the omnibor_note_sections_head
    list, return NULL.  Otherwise, return the SHA1 gitoid (hash_func_type == 0)
    or the SHA256 gitoid (hash_func_type == 1) for that dependency.  If any value
    other than 0 or 1 is passed in hash_func_type, the behaviour is undefined.  */
 
 static char *
-gitbom_is_bom_section_present (const char *name, unsigned hash_func_type)
+omnibor_is_note_section_present (const char *name, unsigned hash_func_type)
 {
-  struct gitbom_bom_sections *bom;
-  for (bom = gitbom_bom_sections_head; bom != NULL; bom = bom->next)
-    if (strcmp (name, bom->name) == 0)
+  struct omnibor_note_sections *note;
+  for (note = omnibor_note_sections_head; note != NULL; note = note->next)
+    if (strcmp (name, note->name) == 0)
       {
         if (hash_func_type == 0)
-          return bom->sha1_contents;
+          return note->sha1_contents;
         else if (hash_func_type == 1)
-          return bom->sha256_contents;
+          return note->sha256_contents;
         /* This point should never be reached.  */
         else
           return NULL;
@@ -926,98 +926,78 @@ gitbom_is_bom_section_present (const char *name, unsigned hash_func_type)
   return NULL;
 }
 
-/* Store the GitBOM information in the specified directory whose path is
+/* Store the OmniBOR information in the specified directory whose path is
    written in the result_dir parameter.  If result_dir is NULL or an empty
-   string, the GitBOM information is stored in the current working directory.
-   The hash_size parameter has to be either GITOID_LENGTH_SHA1 (for SHA1 GitBOM
-   information) or GITOID_LENGTH_SHA256 (for SHA256 GitBOM information).  */
+   string, the OmniBOR information is stored in the current working directory.
+   The hash_size parameter has to be either GITOID_LENGTH_SHA1 (for the SHA1
+   OmniBOR information) or GITOID_LENGTH_SHA256 (for the SHA256 OmniBOR
+   information).  */
 
 static void
-create_gitbom_document_file (char **name, const char *result_dir,
-			     char *new_file_contents, unsigned int new_file_size,
-			     unsigned int hash_size)
+create_omnibor_document_file (char **name, const char *result_dir,
+			      char *new_file_contents, unsigned int new_file_size,
+			      unsigned int hash_size)
 {
   if (hash_size != GITOID_LENGTH_SHA1 && hash_size != GITOID_LENGTH_SHA256)
     return;
 
-  char *path_gitbom = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&path_gitbom, ".gitbom", strlen (path_gitbom),
-			   strlen (".gitbom"));
-  DIR *dir_zero = NULL;
+  char *path_objects = (char *) xcalloc (1, sizeof (char));
+  omnibor_append_to_string (&path_objects, "objects", strlen (path_objects),
+			    strlen ("objects"));
+  DIR *dir_one = NULL;
 
   if (result_dir)
     {
-      if ((dir_zero = opendir (result_dir)) == NULL)
+      if ((dir_one = opendir (result_dir)) == NULL)
         {
           mkdir (result_dir, S_IRWXU);
-	  dir_zero = opendir (result_dir);
+	  dir_one = opendir (result_dir);
 	}
 
-      if (dir_zero != NULL)
+      if (dir_one != NULL)
         {
-          gitbom_add_prefix_to_string (&path_gitbom, "/");
-          gitbom_add_prefix_to_string (&path_gitbom, result_dir);
-          int dfd0 = dirfd (dir_zero);
-          mkdirat (dfd0, ".gitbom", S_IRWXU);
+          omnibor_add_prefix_to_string (&path_objects, "/");
+          omnibor_add_prefix_to_string (&path_objects, result_dir);
+          int dfd1 = dirfd (dir_one);
+          mkdirat (dfd1, "objects", S_IRWXU);
         }
       else if (strlen (result_dir) != 0)
         {
           DIR *final_dir = open_all_directories_in_path (result_dir);
-          /* If an error occurred, illegal path is detected and the GitBOM
+          /* If an error occurred, illegal path is detected and the OmniBOR
              information is not written.  */
-          /* TODO: Maybe put a message here that a specified path, in which GitBOM
-             information should be stored, is illegal.  */
+          /* TODO: Maybe put a message here that a specified path, in which
+	     the OmniBOR information should be stored, is illegal.  */
           if (final_dir == NULL)
             {
               close_all_directories_in_path ();
-              free (path_gitbom);
-              gitbom_set_contents (name, "", 0);
+              free (path_objects);
+              omnibor_set_contents (name, "", 0);
               return;
             }
           else
             {
-              gitbom_add_prefix_to_string (&path_gitbom, "/");
-	      gitbom_add_prefix_to_string (&path_gitbom, result_dir);
-              int dfd0 = dirfd (final_dir);
-              mkdirat (dfd0, ".gitbom", S_IRWXU);
+              omnibor_add_prefix_to_string (&path_objects, "/");
+	      omnibor_add_prefix_to_string (&path_objects, result_dir);
+              int dfd1 = dirfd (final_dir);
+              mkdirat (dfd1, "objects", S_IRWXU);
             }
         }
       else
-        mkdir (".gitbom", S_IRWXU);
+        mkdir ("objects", S_IRWXU);
     }
-  /* Put the GitBOM Document file in the current working directory.  */
+  /* Put the OmniBOR Document file in the current working directory.  */
   else
-    mkdir (".gitbom", S_IRWXU);
+    mkdir ("objects", S_IRWXU);
 
-  DIR *dir_one = opendir (path_gitbom);
-  if (dir_one == NULL)
-    {
-      close_all_directories_in_path ();
-      if (result_dir && dir_zero)
-        closedir (dir_zero);
-      free (path_gitbom);
-      gitbom_set_contents (name, "", 0);
-      return;
-    }
-
-  int dfd1 = dirfd (dir_one);
-  mkdirat (dfd1, "objects", S_IRWXU);
-
-  char *path_objects = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&path_objects, path_gitbom, strlen (path_objects),
-			   strlen (path_gitbom));
-  gitbom_append_to_string (&path_objects, "/objects", strlen (path_objects),
-			   strlen ("/objects"));
   DIR *dir_two = opendir (path_objects);
   if (dir_two == NULL)
     {
-      closedir (dir_one);
       close_all_directories_in_path ();
-      if (result_dir && dir_zero)
-        closedir (dir_zero);
+      if (result_dir && dir_one)
+        closedir (dir_one);
       free (path_objects);
-      free (path_gitbom);
-      gitbom_set_contents (name, "", 0);
+      omnibor_set_contents (name, "", 0);
       return;
     }
 
@@ -1027,63 +1007,61 @@ create_gitbom_document_file (char **name, const char *result_dir,
   DIR *dir_three = NULL;
   if (hash_size == GITOID_LENGTH_SHA1)
     {
-      mkdirat (dfd2, "sha1", S_IRWXU);
+      mkdirat (dfd2, "gitoid_blob_sha1", S_IRWXU);
 
       path_sha = (char *) xcalloc (1, sizeof (char));
-      gitbom_append_to_string (&path_sha, path_objects, strlen (path_sha),
-			       strlen (path_objects));
-      gitbom_append_to_string (&path_sha, "/sha1", strlen (path_sha),
-			       strlen ("/sha1"));
+      omnibor_append_to_string (&path_sha, path_objects, strlen (path_sha),
+				strlen (path_objects));
+      omnibor_append_to_string (&path_sha, "/gitoid_blob_sha1",
+				strlen (path_sha),
+				strlen ("/gitoid_blob_sha1"));
       dir_three = opendir (path_sha);
       if (dir_three == NULL)
         {
           closedir (dir_two);
-          closedir (dir_one);
           close_all_directories_in_path ();
-          if (result_dir && dir_zero)
-            closedir (dir_zero);
+          if (result_dir && dir_one)
+            closedir (dir_one);
           free (path_sha);
           free (path_objects);
-          free (path_gitbom);
-          gitbom_set_contents (name, "", 0);
+          omnibor_set_contents (name, "", 0);
           return;
         }
     }
   else
     {
-      mkdirat (dfd2, "sha256", S_IRWXU);
+      mkdirat (dfd2, "gitoid_blob_sha256", S_IRWXU);
 
       path_sha = (char *) xcalloc (1, sizeof (char));
-      gitbom_append_to_string (&path_sha, path_objects, strlen (path_sha),
-			       strlen (path_objects));
-      gitbom_append_to_string (&path_sha, "/sha256", strlen (path_sha),
-			       strlen ("/sha256"));
+      omnibor_append_to_string (&path_sha, path_objects, strlen (path_sha),
+				strlen (path_objects));
+      omnibor_append_to_string (&path_sha, "/gitoid_blob_sha256",
+				strlen (path_sha),
+				strlen ("/gitoid_blob_sha256"));
       dir_three = opendir (path_sha);
       if (dir_three == NULL)
         {
           closedir (dir_two);
-          closedir (dir_one);
           close_all_directories_in_path ();
-          if (result_dir && dir_zero)
-            closedir (dir_zero);
+          if (result_dir && dir_one)
+            closedir (dir_one);
           free (path_sha);
           free (path_objects);
-          free (path_gitbom);
-          gitbom_set_contents (name, "", 0);
+          omnibor_set_contents (name, "", 0);
           return;
         }
     }
 
   int dfd3 = dirfd (dir_three);
   char *name_substr = (char *) xcalloc (1, sizeof (char));
-  gitbom_substr (&name_substr, 0, 2, *name);
+  omnibor_substr (&name_substr, 0, 2, *name);
   mkdirat (dfd3, name_substr, S_IRWXU);
 
   char *path_dir = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&path_dir, path_sha, strlen (path_dir),
-			   strlen (path_sha));
-  gitbom_append_to_string (&path_dir, "/", strlen (path_dir),
-			   strlen ("/"));
+  omnibor_append_to_string (&path_dir, path_sha, strlen (path_dir),
+			    strlen (path_sha));
+  omnibor_append_to_string (&path_dir, "/", strlen (path_dir),
+			    strlen ("/"));
 
   /* Save current length of path_dir before characters from hash are added to
      the path.  This is done because the calculation of the length of the path
@@ -1092,34 +1070,32 @@ create_gitbom_document_file (char **name, const char *result_dir,
      strlen is not good enough.  */
   unsigned long path_dir_temp_len = strlen (path_dir);
 
-  gitbom_append_to_string (&path_dir, name_substr, path_dir_temp_len, 2);
+  omnibor_append_to_string (&path_dir, name_substr, path_dir_temp_len, 2);
   DIR *dir_four = opendir (path_dir);
   if (dir_four == NULL)
     {
       closedir (dir_three);
       closedir (dir_two);
-      closedir (dir_one);
       close_all_directories_in_path ();
-      if (result_dir && dir_zero)
-        closedir (dir_zero);
+      if (result_dir && dir_one)
+        closedir (dir_one);
       free (path_dir);
       free (name_substr);
       free (path_sha);
       free (path_objects);
-      free (path_gitbom);
-      gitbom_set_contents (name, "", 0);
+      omnibor_set_contents (name, "", 0);
       return;
     }
 
   char *new_file_path = (char *) xcalloc (1, sizeof (char));
-  gitbom_substr (&name_substr, 2, 2 * hash_size - 2, *name);
-  gitbom_append_to_string (&new_file_path, path_dir, strlen (new_file_path),
-			   path_dir_temp_len + 2);
-  gitbom_append_to_string (&new_file_path, "/", path_dir_temp_len + 2,
-			   strlen ("/"));
-  gitbom_append_to_string (&new_file_path, name_substr,
-			   path_dir_temp_len + 2 + strlen ("/"),
-			   2 * hash_size - 2);
+  omnibor_substr (&name_substr, 2, 2 * hash_size - 2, *name);
+  omnibor_append_to_string (&new_file_path, path_dir, strlen (new_file_path),
+			    path_dir_temp_len + 2);
+  omnibor_append_to_string (&new_file_path, "/", path_dir_temp_len + 2,
+			    strlen ("/"));
+  omnibor_append_to_string (&new_file_path, name_substr,
+			    path_dir_temp_len + 2 + strlen ("/"),
+			    2 * hash_size - 2);
 
   FILE *new_file = fopen (new_file_path, "w");
 
@@ -1129,243 +1105,241 @@ create_gitbom_document_file (char **name, const char *result_dir,
   closedir (dir_four);
   closedir (dir_three);
   closedir (dir_two);
-  closedir (dir_one);
   close_all_directories_in_path ();
-  if (result_dir && dir_zero)
-    closedir (dir_zero);
+  if (result_dir && dir_one)
+    closedir (dir_one);
   free (new_file_path);
   free (path_dir);
   free (name_substr);
   free (path_sha);
   free (path_objects);
-  free (path_gitbom);
 }
 
 /* Calculate the gitoids of all the dependencies of the resulting executable
-   and create the GitBOM Document file using them.  Then calculate the
+   and create the OmniBOR Document file using them.  Then calculate the
    gitoid of that file and name it with that gitoid in the format specified
-   by the GitBOM specification.  Use SHA1 hashing algorithm for calculating
+   by the OmniBOR specification.  Use SHA1 hashing algorithm for calculating
    all the gitoids.  */
 
 static void
-write_sha1_gitbom (char **name, const char *result_dir)
+write_sha1_omnibor (char **name, const char *result_dir)
 {
   static const char *const lut = "0123456789abcdef";
   char *new_file_contents = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&new_file_contents, "gitoid:blob:sha1\n",
-			   strlen (new_file_contents),
-			   strlen ("gitoid:blob:sha1\n"));
+  omnibor_append_to_string (&new_file_contents, "gitoid:blob:sha1\n",
+			    strlen (new_file_contents),
+			    strlen ("gitoid:blob:sha1\n"));
   char *temp_file_contents = (char *) xcalloc (1, sizeof (char));
   char *high_ch = (char *) xmalloc (sizeof (char) * 2);
   high_ch[1] = '\0';
   char *low_ch = (char *) xmalloc (sizeof (char) * 2);
   low_ch[1] = '\0';
 
-  struct gitbom_deps *curr_dep = NULL;
+  struct omnibor_deps *curr_dep = NULL;
   struct dependency_file *dep;
   for (dep = dependency_files; dep != NULL; dep = dep->next)
     {
-      if ((curr_dep = gitbom_is_dep_present (dep->name)) != NULL)
+      if ((curr_dep = omnibor_is_dep_present (dep->name)) != NULL)
 	if (curr_dep->sha1_contents != NULL)
 	  continue;
 
       FILE *dep_file_handle = fopen (dep->name, "rb");
       unsigned char resblock[GITOID_LENGTH_SHA1];
 
-      calculate_sha1_gitbom (dep_file_handle, resblock);
+      calculate_sha1_omnibor (dep_file_handle, resblock);
 
       fclose (dep_file_handle);
 
-      gitbom_set_contents (&temp_file_contents, "", 0);
+      omnibor_set_contents (&temp_file_contents, "", 0);
 
       for (unsigned i = 0; i != GITOID_LENGTH_SHA1; i++)
         {
           high_ch[0] = lut[resblock[i] >> 4];
           low_ch[0] = lut[resblock[i] & 15];
-          gitbom_append_to_string (&temp_file_contents, high_ch,
-				   i * 2, 2);
-          gitbom_append_to_string (&temp_file_contents, low_ch,
-				   i * 2 + 1, 2);
+          omnibor_append_to_string (&temp_file_contents, high_ch,
+				    i * 2, 2);
+          omnibor_append_to_string (&temp_file_contents, low_ch,
+				    i * 2 + 1, 2);
         }
 
       if (curr_dep == NULL)
-        gitbom_add_to_deps (dep->name, temp_file_contents, NULL,
-			    2 * GITOID_LENGTH_SHA1, 0);
+        omnibor_add_to_deps (dep->name, temp_file_contents, NULL,
+			     2 * GITOID_LENGTH_SHA1, 0);
       /* Here curr_dep->sha1_contents has to be NULL.  */
       else
         {
           curr_dep->sha1_contents = (char *) xcalloc (1, sizeof (char));
-	  gitbom_append_to_string (&curr_dep->sha1_contents,
-				   temp_file_contents,
-				   strlen (curr_dep->sha1_contents),
-				   2 * GITOID_LENGTH_SHA1);
+	  omnibor_append_to_string (&curr_dep->sha1_contents,
+				    temp_file_contents,
+				    strlen (curr_dep->sha1_contents),
+				    2 * GITOID_LENGTH_SHA1);
         }
     }
 
-  gitbom_sort (0);
+  omnibor_sort (0);
 
   unsigned current_length = strlen (new_file_contents);
-  struct gitbom_deps *dep_file;
-  for (dep_file = gitbom_deps_head; dep_file != NULL;
+  struct omnibor_deps *dep_file;
+  for (dep_file = omnibor_deps_head; dep_file != NULL;
        dep_file = dep_file->next)
     {
-      gitbom_append_to_string (&new_file_contents, "blob ",
-			       current_length,
-			       strlen ("blob "));
+      omnibor_append_to_string (&new_file_contents, "blob ",
+				current_length,
+				strlen ("blob "));
       current_length += strlen ("blob ");
-      gitbom_append_to_string (&new_file_contents, dep_file->sha1_contents,
-			       current_length,
-			       2 * GITOID_LENGTH_SHA1);
+      omnibor_append_to_string (&new_file_contents, dep_file->sha1_contents,
+				current_length,
+				2 * GITOID_LENGTH_SHA1);
       current_length += 2 * GITOID_LENGTH_SHA1;
-      char *bom_sec_contents = gitbom_is_bom_section_present (dep_file->name, 0);
-      if (bom_sec_contents != NULL)
+      char *note_sec_contents = omnibor_is_note_section_present (dep_file->name, 0);
+      if (note_sec_contents != NULL)
         {
-          gitbom_append_to_string (&new_file_contents, " bom ",
-				   current_length,
-				   strlen (" bom "));
+          omnibor_append_to_string (&new_file_contents, " bom ",
+				    current_length,
+				    strlen (" bom "));
           current_length += strlen (" bom ");
-	  gitbom_append_to_string (&new_file_contents, bom_sec_contents,
-				   current_length,
-				   2 * GITOID_LENGTH_SHA1);
+	  omnibor_append_to_string (&new_file_contents, note_sec_contents,
+				    current_length,
+				    2 * GITOID_LENGTH_SHA1);
           current_length += 2 * GITOID_LENGTH_SHA1;
         }
-      gitbom_append_to_string (&new_file_contents, "\n",
-			       current_length,
-			       strlen ("\n"));
+      omnibor_append_to_string (&new_file_contents, "\n",
+				current_length,
+				strlen ("\n"));
       current_length += strlen ("\n");
     }
   unsigned new_file_size = current_length;
 
   unsigned char resblock[GITOID_LENGTH_SHA1];
-  calculate_sha1_gitbom_with_contents (new_file_contents, resblock);
+  calculate_sha1_omnibor_with_contents (new_file_contents, resblock);
 
   for (unsigned i = 0; i != GITOID_LENGTH_SHA1; i++)
     {
       high_ch[0] = lut[resblock[i] >> 4];
       low_ch[0] = lut[resblock[i] & 15];
-      gitbom_append_to_string (name, high_ch, i * 2, 2);
-      gitbom_append_to_string (name, low_ch, i * 2 + 1, 2);
+      omnibor_append_to_string (name, high_ch, i * 2, 2);
+      omnibor_append_to_string (name, low_ch, i * 2 + 1, 2);
     }
   free (low_ch);
   free (high_ch);
 
-  create_gitbom_document_file (name, result_dir, new_file_contents,
-			       new_file_size, GITOID_LENGTH_SHA1);
+  create_omnibor_document_file (name, result_dir, new_file_contents,
+				new_file_size, GITOID_LENGTH_SHA1);
 
   free (temp_file_contents);
   free (new_file_contents);
 }
 
 /* Calculate the gitoids of all the dependencies of the resulting executable
-   and create the GitBOM Document file using them.  Then calculate the
+   and create the OmniBOR Document file using them.  Then calculate the
    gitoid of that file and name it with that gitoid in the format specified
-   by the GitBOM specification.  Use SHA256 hashing algorithm for calculating
+   by the OmniBOR specification.  Use SHA256 hashing algorithm for calculating
    all the gitoids.  */
 
 static void
-write_sha256_gitbom (char **name, const char *result_dir)
+write_sha256_omnibor (char **name, const char *result_dir)
 {
   static const char *const lut = "0123456789abcdef";
   char *new_file_contents = (char *) xcalloc (1, sizeof (char));
-  gitbom_append_to_string (&new_file_contents, "gitoid:blob:sha256\n",
-			   strlen (new_file_contents),
-			   strlen ("gitoid:blob:sha256\n"));
+  omnibor_append_to_string (&new_file_contents, "gitoid:blob:sha256\n",
+			    strlen (new_file_contents),
+			    strlen ("gitoid:blob:sha256\n"));
   char *temp_file_contents = (char *) xcalloc (1, sizeof (char));
   char *high_ch = (char *) xmalloc (sizeof (char) * 2);
   high_ch[1] = '\0';
   char *low_ch = (char *) xmalloc (sizeof (char) * 2);
   low_ch[1] = '\0';
 
-  struct gitbom_deps *curr_dep = NULL;
+  struct omnibor_deps *curr_dep = NULL;
   struct dependency_file *dep;
   for (dep = dependency_files; dep != NULL; dep = dep->next)
     {
-      if ((curr_dep = gitbom_is_dep_present (dep->name)) != NULL)
+      if ((curr_dep = omnibor_is_dep_present (dep->name)) != NULL)
 	if (curr_dep->sha256_contents != NULL)
 	  continue;
 
       FILE *dep_file_handle = fopen (dep->name, "rb");
       unsigned char resblock[GITOID_LENGTH_SHA256];
 
-      calculate_sha256_gitbom (dep_file_handle, resblock);
+      calculate_sha256_omnibor (dep_file_handle, resblock);
 
       fclose (dep_file_handle);
 
-      gitbom_set_contents (&temp_file_contents, "", 0);
+      omnibor_set_contents (&temp_file_contents, "", 0);
 
       for (unsigned i = 0; i != GITOID_LENGTH_SHA256; i++)
         {
           high_ch[0] = lut[resblock[i] >> 4];
           low_ch[0] = lut[resblock[i] & 15];
-          gitbom_append_to_string (&temp_file_contents, high_ch,
-				   i * 2, 2);
-          gitbom_append_to_string (&temp_file_contents, low_ch,
-				   i * 2 + 1, 2);
+          omnibor_append_to_string (&temp_file_contents, high_ch,
+				    i * 2, 2);
+          omnibor_append_to_string (&temp_file_contents, low_ch,
+				    i * 2 + 1, 2);
         }
 
       if (curr_dep == NULL)
-        gitbom_add_to_deps (dep->name, NULL, temp_file_contents,
-			    0, 2 * GITOID_LENGTH_SHA256);
+        omnibor_add_to_deps (dep->name, NULL, temp_file_contents,
+			     0, 2 * GITOID_LENGTH_SHA256);
       /* Here curr_dep->sha256_contents has to be NULL.  */
       else
         {
           curr_dep->sha256_contents = (char *) xcalloc (1, sizeof (char));
-	  gitbom_append_to_string (&curr_dep->sha256_contents,
-				   temp_file_contents,
-				   strlen (curr_dep->sha256_contents),
-				   2 * GITOID_LENGTH_SHA256);
+	  omnibor_append_to_string (&curr_dep->sha256_contents,
+				    temp_file_contents,
+				    strlen (curr_dep->sha256_contents),
+				    2 * GITOID_LENGTH_SHA256);
         }
     }
 
-  gitbom_sort (1);
+  omnibor_sort (1);
 
   unsigned current_length = strlen (new_file_contents);
-  struct gitbom_deps *dep_file;
-  for (dep_file = gitbom_deps_head; dep_file != NULL;
+  struct omnibor_deps *dep_file;
+  for (dep_file = omnibor_deps_head; dep_file != NULL;
        dep_file = dep_file->next)
     {
-      gitbom_append_to_string (&new_file_contents, "blob ",
-			       current_length,
-			       strlen ("blob "));
+      omnibor_append_to_string (&new_file_contents, "blob ",
+				current_length,
+				strlen ("blob "));
       current_length += strlen ("blob ");
-      gitbom_append_to_string (&new_file_contents, dep_file->sha256_contents,
-			       current_length,
-			       2 * GITOID_LENGTH_SHA256);
+      omnibor_append_to_string (&new_file_contents, dep_file->sha256_contents,
+				current_length,
+				2 * GITOID_LENGTH_SHA256);
       current_length += 2 * GITOID_LENGTH_SHA256;
-      char *bom_sec_contents = gitbom_is_bom_section_present (dep_file->name, 1);
-      if (bom_sec_contents != NULL)
+      char *note_sec_contents = omnibor_is_note_section_present (dep_file->name, 1);
+      if (note_sec_contents != NULL)
         {
-          gitbom_append_to_string (&new_file_contents, " bom ",
-				   current_length,
-				   strlen (" bom "));
+          omnibor_append_to_string (&new_file_contents, " bom ",
+				    current_length,
+				    strlen (" bom "));
           current_length += strlen (" bom ");
-	  gitbom_append_to_string (&new_file_contents, bom_sec_contents,
-				   current_length,
-				   2 * GITOID_LENGTH_SHA256);
+	  omnibor_append_to_string (&new_file_contents, note_sec_contents,
+				    current_length,
+				    2 * GITOID_LENGTH_SHA256);
           current_length += 2 * GITOID_LENGTH_SHA256;
         }
-      gitbom_append_to_string (&new_file_contents, "\n",
-			       current_length,
-			       strlen ("\n"));
+      omnibor_append_to_string (&new_file_contents, "\n",
+				current_length,
+				strlen ("\n"));
       current_length += strlen ("\n");
     }
   unsigned new_file_size = current_length;
 
   unsigned char resblock[GITOID_LENGTH_SHA256];
-  calculate_sha256_gitbom_with_contents (new_file_contents, resblock);
+  calculate_sha256_omnibor_with_contents (new_file_contents, resblock);
 
   for (unsigned i = 0; i != GITOID_LENGTH_SHA256; i++)
     {
       high_ch[0] = lut[resblock[i] >> 4];
       low_ch[0] = lut[resblock[i] & 15];
-      gitbom_append_to_string (name, high_ch, i * 2, 2);
-      gitbom_append_to_string (name, low_ch, i * 2 + 1, 2);
+      omnibor_append_to_string (name, high_ch, i * 2, 2);
+      omnibor_append_to_string (name, low_ch, i * 2 + 1, 2);
     }
   free (low_ch);
   free (high_ch);
 
-  create_gitbom_document_file (name, result_dir, new_file_contents,
-			       new_file_size, GITOID_LENGTH_SHA256);
+  create_omnibor_document_file (name, result_dir, new_file_contents,
+				new_file_size, GITOID_LENGTH_SHA256);
 
   free (temp_file_contents);
   free (new_file_contents);
@@ -1384,7 +1358,7 @@ create_sha1_symlink (const char *gitoid_sha1, char *res_dir)
   FILE *file_executable = fopen (output_filename, "rb");
   unsigned char resblock[GITOID_LENGTH_SHA1];
 
-  calculate_sha1_gitbom (file_executable, resblock);
+  calculate_sha1_omnibor (file_executable, resblock);
 
   fclose (file_executable);
 
@@ -1392,8 +1366,8 @@ create_sha1_symlink (const char *gitoid_sha1, char *res_dir)
     {
       high_ch[0] = lut[resblock[i] >> 4];
       low_ch[0] = lut[resblock[i] & 15];
-      gitbom_append_to_string (&gitoid_exec_sha1, high_ch, i * 2, 2);
-      gitbom_append_to_string (&gitoid_exec_sha1, low_ch, i * 2 + 1, 2);
+      omnibor_append_to_string (&gitoid_exec_sha1, high_ch, i * 2, 2);
+      omnibor_append_to_string (&gitoid_exec_sha1, low_ch, i * 2 + 1, 2);
     }
 
   char *path_adg = (char *) xcalloc (1, sizeof (char));
@@ -1413,18 +1387,18 @@ create_sha1_symlink (const char *gitoid_sha1, char *res_dir)
 
       int dfd = dirfd (dir);
       mkdirat (dfd, ".adg", S_IRWXU);
-      gitbom_append_to_string (&path_adg, res_dir, strlen (path_adg),
-			       strlen (res_dir));
-      gitbom_append_to_string (&path_adg, "/.adg", strlen (path_adg),
-			       strlen ("/.adg"));
+      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
+				strlen (res_dir));
+      omnibor_append_to_string (&path_adg, "/.adg", strlen (path_adg),
+				strlen ("/.adg"));
     }
   else
     {
       mkdir (".adg", S_IRWXU);
-      gitbom_append_to_string (&path_adg, res_dir, strlen (path_adg),
-			       strlen (res_dir));
-      gitbom_append_to_string (&path_adg, ".adg", strlen (path_adg),
-			       strlen (".adg"));
+      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
+				strlen (res_dir));
+      omnibor_append_to_string (&path_adg, ".adg", strlen (path_adg),
+				strlen (".adg"));
     }
 
   dir_adg = opendir (path_adg);
@@ -1464,7 +1438,7 @@ create_sha256_symlink (const char *gitoid_sha256, char *res_dir)
   FILE *file_executable = fopen (output_filename, "rb");
   unsigned char resblock[GITOID_LENGTH_SHA256];
 
-  calculate_sha256_gitbom (file_executable, resblock);
+  calculate_sha256_omnibor (file_executable, resblock);
 
   fclose (file_executable);
 
@@ -1472,8 +1446,8 @@ create_sha256_symlink (const char *gitoid_sha256, char *res_dir)
     {
       high_ch[0] = lut[resblock[i] >> 4];
       low_ch[0] = lut[resblock[i] & 15];
-      gitbom_append_to_string (&gitoid_exec_sha256, high_ch, i * 2, 2);
-      gitbom_append_to_string (&gitoid_exec_sha256, low_ch, i * 2 + 1, 2);
+      omnibor_append_to_string (&gitoid_exec_sha256, high_ch, i * 2, 2);
+      omnibor_append_to_string (&gitoid_exec_sha256, low_ch, i * 2 + 1, 2);
     }
 
   char *path_adg = (char *) xcalloc (1, sizeof (char));
@@ -1493,18 +1467,18 @@ create_sha256_symlink (const char *gitoid_sha256, char *res_dir)
 
       int dfd = dirfd (dir);
       mkdirat (dfd, ".adg", S_IRWXU);
-      gitbom_append_to_string (&path_adg, res_dir, strlen (path_adg),
-			       strlen (res_dir));
-      gitbom_append_to_string (&path_adg, "/.adg", strlen (path_adg),
-			       strlen ("/.adg"));
+      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
+				strlen (res_dir));
+      omnibor_append_to_string (&path_adg, "/.adg", strlen (path_adg),
+				strlen ("/.adg"));
     }
   else
     {
       mkdir (".adg", S_IRWXU);
-      gitbom_append_to_string (&path_adg, res_dir, strlen (path_adg),
-			       strlen (res_dir));
-      gitbom_append_to_string (&path_adg, ".adg", strlen (path_adg),
-			       strlen (".adg"));
+      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
+				strlen (res_dir));
+      omnibor_append_to_string (&path_adg, ".adg", strlen (path_adg),
+				strlen (".adg"));
     }
 
   dir_adg = opendir (path_adg);
@@ -1857,36 +1831,36 @@ main (int argc, char **argv)
   if (config.dependency_file != NULL)
     write_dependency_file ();
 
-  /* If the calculation of the GitBOM information is enabled, do it here.
-     Also, determine the directory to store the GitBOM files in this order of
+  /* If the calculation of the OmniBOR information is enabled, do it here.
+     Also, determine the directory to store the OmniBOR files in this order of
      precedence.
-	1. If GITBOM_DIR environment variable is set, use this location.
-	2. Use the directory name passed with --gitbom option.
-	3. Default is to write the GitBOM files in the same directory as the
+	1. If OMNIBOR_DIR environment variable is set, use this location.
+	2. Use the directory name passed with --omnibor option.
+	3. Default is to write the OmniBOR files in the same directory as the
 	   resulting executable.  */
-  if (config.gitbom_dir != NULL ||
-     (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
+  if (config.omnibor_dir != NULL ||
+     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
     {
-      gitbom_dir = (char *) xcalloc (1, sizeof (char));
+      omnibor_dir = (char *) xcalloc (1, sizeof (char));
 
-      const char *env_gitbom = getenv ("GITBOM_DIR");
-      if (env_gitbom != NULL)
-        gitbom_set_contents (&gitbom_dir, env_gitbom, strlen (env_gitbom));
+      const char *env_omnibor = getenv ("OMNIBOR_DIR");
+      if (env_omnibor != NULL)
+        omnibor_set_contents (&omnibor_dir, env_omnibor, strlen (env_omnibor));
 
-      if (strlen (gitbom_dir) == 0)
+      if (strlen (omnibor_dir) == 0)
         {
-          if (strlen (config.gitbom_dir) > 0)
-            gitbom_set_contents (&gitbom_dir, config.gitbom_dir,
-				 strlen (config.gitbom_dir));
+          if (strlen (config.omnibor_dir) > 0)
+            omnibor_set_contents (&omnibor_dir, config.omnibor_dir,
+				  strlen (config.omnibor_dir));
           else
             {
 	      char *res = (char *) xcalloc (1, sizeof (char));
 
-              gitbom_get_destdir (getenv ("COLLECT_GCC_OPTIONS"), &res);
+              omnibor_get_destdir (getenv ("COLLECT_GCC_OPTIONS"), &res);
               if (strlen (res) > 0)
-                gitbom_set_contents (&gitbom_dir, res, strlen (res));
+                omnibor_set_contents (&omnibor_dir, res, strlen (res));
               else
-                gitbom_set_contents (&gitbom_dir, "", 0);
+                omnibor_set_contents (&omnibor_dir, "", 0);
 
 	      free (res);
             }
@@ -1894,28 +1868,28 @@ main (int argc, char **argv)
 
       char *gitoid_sha1 = (char *) xcalloc (1, sizeof (char));
       char *gitoid_sha256 = (char *) xcalloc (1, sizeof (char));
-      if (strlen (gitbom_dir) > 0)
+      if (strlen (omnibor_dir) > 0)
         {
-          write_sha1_gitbom (&gitoid_sha1, gitbom_dir);
-          write_sha256_gitbom (&gitoid_sha256, gitbom_dir);
+          write_sha1_omnibor (&gitoid_sha1, omnibor_dir);
+          write_sha256_omnibor (&gitoid_sha256, omnibor_dir);
         }
       else
         {
-          write_sha1_gitbom (&gitoid_sha1, NULL);
-          write_sha256_gitbom (&gitoid_sha256, gitbom_dir);
+          write_sha1_omnibor (&gitoid_sha1, NULL);
+          write_sha256_omnibor (&gitoid_sha256, NULL);
         }
 
-      gitbom_clear_deps ();
-      gitbom_clear_bom_sections ();
+      omnibor_clear_deps ();
+      omnibor_clear_note_sections ();
 
-      strncpy (ldelf_emit_note_gitbom_sha1, gitoid_sha1, 2 * GITOID_LENGTH_SHA1);
-      strncpy (ldelf_emit_note_gitbom_sha256, gitoid_sha256,
+      strncpy (ldelf_emit_note_omnibor_sha1, gitoid_sha1, 2 * GITOID_LENGTH_SHA1);
+      strncpy (ldelf_emit_note_omnibor_sha256, gitoid_sha256,
 	       2 * GITOID_LENGTH_SHA256);
 
       free (gitoid_sha256);
       free (gitoid_sha1);
-      if (getenv ("GITBOM_NO_EMBED") == NULL)
-	free (gitbom_dir);
+      if (getenv ("OMNIBOR_NO_EMBED") == NULL)
+	free (omnibor_dir);
     }
 
   /* Even if we're producing relocatable output, some non-fatal errors should
@@ -1994,24 +1968,24 @@ main (int argc, char **argv)
       fflush (stderr);
     }
 
-  /* Symlink (gitoid_of_executable -> gitoid_of_gitbom_doc) creation for
-     both SHA1 and SHA256 GitBOM Document files.  Do it only in the NO_EMBED
-     case (when GITBOM_NO_EMBED environment variable is set).  */
-  if (getenv ("GITBOM_NO_EMBED") != NULL)
-    if (config.gitbom_dir != NULL ||
-       (getenv ("GITBOM_DIR") != NULL && strlen (getenv ("GITBOM_DIR")) > 0))
+  /* Symlink (gitoid_of_executable -> gitoid_of_omnibor_doc) creation for
+     both SHA1 and SHA256 OmniBOR Document files.  Do it only in the NO_EMBED
+     case (when OMNIBOR_NO_EMBED environment variable is set).  */
+  if (getenv ("OMNIBOR_NO_EMBED") != NULL)
+    if (config.omnibor_dir != NULL ||
+       (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
       {
-	create_sha1_symlink (ldelf_emit_note_gitbom_sha1,
-			     gitbom_dir);
+	create_sha1_symlink (ldelf_emit_note_omnibor_sha1,
+			     omnibor_dir);
 
-	create_sha256_symlink (ldelf_emit_note_gitbom_sha256,
-			       gitbom_dir);
+	create_sha256_symlink (ldelf_emit_note_omnibor_sha256,
+			       omnibor_dir);
 
-	free (ldelf_emit_note_gitbom_sha1);
-	free (ldelf_emit_note_gitbom_sha256);
-	ldelf_emit_note_gitbom_sha1 = NULL;
-	ldelf_emit_note_gitbom_sha256 = NULL;
-	free (gitbom_dir);
+	free (ldelf_emit_note_omnibor_sha1);
+	free (ldelf_emit_note_omnibor_sha256);
+	ldelf_emit_note_omnibor_sha1 = NULL;
+	ldelf_emit_note_omnibor_sha256 = NULL;
+	free (omnibor_dir);
       }
 
   /* Prevent ld_cleanup from doing anything, after a successful link.  */
