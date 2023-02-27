@@ -52,6 +52,7 @@
 
 #define GITOID_LENGTH_SHA1 20
 #define GITOID_LENGTH_SHA256 32
+#define MAX_LONG_SIZE_STRING_LENGTH 256
 
 /* Somewhere above, sys/stat.h got included.  */
 #if !defined(S_ISDIR) && defined(S_IFDIR)
@@ -279,7 +280,8 @@ omnibor_append_to_string (char **str1, const char *str2,
 {
   *str1 = (char *) xrealloc
 	(*str1, sizeof (char) * (len1 + len2 + 1));
-  strcat (*str1, str2);
+  memcpy (*str1 + len1, str2, len2);
+  (*str1)[len1 + len2] = '\0';
 }
 
 /* Add the string str2 as a prefix to the string str1.  */
@@ -287,13 +289,16 @@ omnibor_append_to_string (char **str1, const char *str2,
 static void
 omnibor_add_prefix_to_string (char **str1, const char *str2)
 {
+  unsigned len1 = strlen (*str1), len2 = strlen (str2);
   char *temp = (char *) xcalloc
-	((strlen (*str1) + strlen (str2) + 1), sizeof (char));
-  strcat (temp, str2);
-  strcat (temp, *str1);
+	(len1 + len2 + 1, sizeof (char));
+  memcpy (temp, str2, len2);
+  memcpy (temp + len2, *str1, len1);
+  temp[len1 + len2] = '\0';
   *str1 = (char *) xrealloc
-	(*str1, sizeof (char) * (strlen (*str1) + strlen (str2) + 1));
-  strcpy (*str1, temp);
+	(*str1, sizeof (char) * (len1 + len2 + 1));
+  memcpy (*str1, temp, len1 + len2);
+  (*str1)[len1 + len2] = '\0';
   free (temp);
 }
 
@@ -305,7 +310,7 @@ omnibor_substr (char **str1, unsigned start, unsigned len, const char *str2)
 {
   *str1 = (char *) xrealloc
 	(*str1, sizeof (char) * (len + 1));
-  strncpy (*str1, str2 + start, len);
+  memcpy (*str1, str2 + start, len);
   (*str1)[len] = '\0';
 }
 
@@ -316,7 +321,8 @@ omnibor_set_contents (char **str1, const char *str2, unsigned long len)
 {
   *str1 = (char *) xrealloc
 	(*str1, sizeof (char) * (len + 1));
-  strcpy (*str1, str2);
+  memcpy (*str1, str2, len);
+  (*str1)[len] = '\0';
 }
 
 /* Get the path of the directory where the resulting executable will be
@@ -545,7 +551,7 @@ calculate_sha1_omnibor (FILE *dep_file, unsigned char resblock[])
 
   /* This length should be enough for everything up to 64B, which should
      cover long type.  */
-  char buff_for_file_size[200];
+  char buff_for_file_size[MAX_LONG_SIZE_STRING_LENGTH];
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
@@ -582,7 +588,7 @@ calculate_sha1_omnibor_with_contents (char *contents,
 
   /* This length should be enough for everything up to 64B, which should
      cover long type.  */
-  char buff_for_file_size[200];
+  char buff_for_file_size[MAX_LONG_SIZE_STRING_LENGTH];
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
@@ -616,7 +622,7 @@ calculate_sha256_omnibor (FILE *dep_file, unsigned char resblock[])
 
   /* This length should be enough for everything up to 64B, which should
      cover long type.  */
-  char buff_for_file_size[200];
+  char buff_for_file_size[MAX_LONG_SIZE_STRING_LENGTH];
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
@@ -653,7 +659,7 @@ calculate_sha256_omnibor_with_contents (char *contents,
 
   /* This length should be enough for everything up to 64B, which should
      cover long type.  */
-  char buff_for_file_size[200];
+  char buff_for_file_size[MAX_LONG_SIZE_STRING_LENGTH];
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
@@ -1882,9 +1888,22 @@ main (int argc, char **argv)
       omnibor_clear_deps ();
       omnibor_clear_note_sections ();
 
-      strncpy (ldelf_emit_note_omnibor_sha1, gitoid_sha1, 2 * GITOID_LENGTH_SHA1);
-      strncpy (ldelf_emit_note_omnibor_sha256, gitoid_sha256,
-	       2 * GITOID_LENGTH_SHA256);
+      if (strcmp ("", gitoid_sha1) == 0 || strcmp ("", gitoid_sha256) == 0)
+        {
+          memcpy (ldelf_emit_note_omnibor_sha1, gitoid_sha1, strlen (gitoid_sha1));
+	  ldelf_emit_note_omnibor_sha1[strlen (gitoid_sha1)] = '\0';
+	  memcpy (ldelf_emit_note_omnibor_sha256, gitoid_sha256,
+		  strlen (gitoid_sha256));
+	  ldelf_emit_note_omnibor_sha256[strlen (gitoid_sha256)] = '\0';
+        }
+      else
+        {
+	  memcpy (ldelf_emit_note_omnibor_sha1, gitoid_sha1, 2 * GITOID_LENGTH_SHA1);
+	  ldelf_emit_note_omnibor_sha1[2 * GITOID_LENGTH_SHA1] = '\0';
+	  memcpy (ldelf_emit_note_omnibor_sha256, gitoid_sha256,
+		  2 * GITOID_LENGTH_SHA256);
+	  ldelf_emit_note_omnibor_sha256[2 * GITOID_LENGTH_SHA256] = '\0';
+	}
 
       free (gitoid_sha256);
       free (gitoid_sha1);
