@@ -52,7 +52,7 @@
 
 #define GITOID_LENGTH_SHA1 20
 #define GITOID_LENGTH_SHA256 32
-#define MAX_LONG_SIZE_STRING_LENGTH 256
+#define MAX_FILE_SIZE_STRING_LENGTH 256
 
 /* Somewhere above, sys/stat.h got included.  */
 #if !defined(S_ISDIR) && defined(S_IFDIR)
@@ -551,7 +551,7 @@ calculate_sha1_omnibor (FILE *dep_file, unsigned char resblock[])
 
   /* This length should be enough for everything up to 64B, which should
      cover long type.  */
-  char buff_for_file_size[MAX_LONG_SIZE_STRING_LENGTH];
+  char buff_for_file_size[MAX_FILE_SIZE_STRING_LENGTH];
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
@@ -588,7 +588,7 @@ calculate_sha1_omnibor_with_contents (char *contents,
 
   /* This length should be enough for everything up to 64B, which should
      cover long type.  */
-  char buff_for_file_size[MAX_LONG_SIZE_STRING_LENGTH];
+  char buff_for_file_size[MAX_FILE_SIZE_STRING_LENGTH];
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
@@ -622,7 +622,7 @@ calculate_sha256_omnibor (FILE *dep_file, unsigned char resblock[])
 
   /* This length should be enough for everything up to 64B, which should
      cover long type.  */
-  char buff_for_file_size[MAX_LONG_SIZE_STRING_LENGTH];
+  char buff_for_file_size[MAX_FILE_SIZE_STRING_LENGTH];
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
@@ -659,7 +659,7 @@ calculate_sha256_omnibor_with_contents (char *contents,
 
   /* This length should be enough for everything up to 64B, which should
      cover long type.  */
-  char buff_for_file_size[MAX_LONG_SIZE_STRING_LENGTH];
+  char buff_for_file_size[MAX_FILE_SIZE_STRING_LENGTH];
   sprintf (buff_for_file_size, "%ld", file_size);
 
   char *init_data = (char *) xcalloc (1, sizeof (char));
