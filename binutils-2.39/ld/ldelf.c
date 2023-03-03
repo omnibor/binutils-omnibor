@@ -1323,7 +1323,6 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
       s = bfd_get_section_by_name (abfd, ".note.omnibor");
       if (s != NULL)
         {
-          s->flags |= SEC_EXCLUDE;
           if (config.omnibor_dir != NULL ||
 	     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
 	    {
@@ -1335,8 +1334,8 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
 			(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
               bfd_get_section_contents (abfd, s, sec_contents_sha1, 0,
 					20 + GITOID_LENGTH_SHA1);
-              strncpy (sec_contents_gitoid_sha1, sec_contents_sha1 + GITOID_LENGTH_SHA1,
-		       GITOID_LENGTH_SHA1);
+              memcpy (sec_contents_gitoid_sha1, sec_contents_sha1 + GITOID_LENGTH_SHA1,
+		      GITOID_LENGTH_SHA1);
               convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid_sha1,
 						  sec_contents_fin_sha1,
 						  GITOID_LENGTH_SHA1);
@@ -1351,8 +1350,8 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
               bfd_get_section_contents (abfd, s, sec_contents_sha256,
 					20 + GITOID_LENGTH_SHA1,
 					20 + GITOID_LENGTH_SHA256);
-              strncpy (sec_contents_gitoid_sha256, sec_contents_sha256 + 20,
-		       GITOID_LENGTH_SHA256);
+              memcpy (sec_contents_gitoid_sha256, sec_contents_sha256 + 20,
+		      GITOID_LENGTH_SHA256);
               convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid_sha256,
 						  sec_contents_fin_sha256,
 						  GITOID_LENGTH_SHA256);
@@ -1369,6 +1368,9 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
               free (sec_contents_gitoid_sha1);
               free (sec_contents_sha1);
             }
+          s->flags |= SEC_EXCLUDE;
+          bfd_section_list_remove (abfd, s);
+	  abfd->section_count--;
         }
     }
 
