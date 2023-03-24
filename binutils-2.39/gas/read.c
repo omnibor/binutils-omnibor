@@ -852,6 +852,8 @@ read_a_source_file (const char *name)
   long temp;
   const pseudo_typeS *pop;
 
+  omnibor_input_filename = name;
+
 #ifdef WARN_COMMENTS
   found_comment = 0;
 #endif

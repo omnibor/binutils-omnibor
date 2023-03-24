@@ -184,7 +184,8 @@ COMMON segT now_seg;
 
 #define segment_name(SEG)	bfd_section_name (SEG)
 
-extern segT reg_section, expr_section;
+extern segT reg_section, expr_section, input_omnibor_section,
+	    output_omnibor_section;
 /* Shouldn't these be eliminated someday?  */
 extern segT text_section, data_section, bss_section;
 #define absolute_section	bfd_abs_section_ptr
@@ -489,6 +490,27 @@ void   start_dependencies (char *);
 void   register_dependency (const char *);
 void   print_dependencies (void);
 segT   subseg_get (const char *, int);
+
+/* OmniBOR-related function declarations.  Defined in depend.c.  */
+void omnibor_start_dependencies (void);
+bool is_omnibor_enabled (void);
+void omnibor_set_contents (char **, const char *, unsigned long);
+void omnibor_add_to_note_sections (const char *, char *, char *,
+				   unsigned long, unsigned long);
+void omnibor_clear_deps (void);
+void omnibor_clear_note_sections (void);
+void omnibor_get_destdir (const char *, char **);
+void write_sha1_omnibor (char **, const char *);
+void write_sha256_omnibor (char **, const char *);
+void create_sha1_symlink (const char *, char *);
+void create_sha256_symlink (const char *, char *);
+
+/* More OmniBOR-related function declarations.  Defined in write.c.  */
+void write_omnibor (const char *, const char *);
+
+/* OmniBOR-related variable declarations.  Defined in as.c.  */
+extern const char *omnibor_dir;
+extern const char *omnibor_input_filename;
 
 char *remap_debug_filename (const char *);
 void add_debug_prefix_map (const char *);

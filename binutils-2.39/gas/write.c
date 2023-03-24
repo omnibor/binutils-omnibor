@@ -27,6 +27,9 @@
 #include "dwarf2dbg.h"
 #include "compress-debug.h"
 
+#define GITOID_LENGTH_SHA1 20
+#define GITOID_LENGTH_SHA256 32
+
 #ifndef TC_FORCE_RELOCATION
 #define TC_FORCE_RELOCATION(FIX)		\
   (generic_force_reloc (FIX))
@@ -2126,6 +2129,269 @@ maybe_generate_build_notes (void)
 }
 #endif /* OBJ_ELF */
 
+/* This function returns a character which has a decimal value equal to
+   the integer value being represented by the hexadecimal character
+   passed as a parameter.  */
+
+static unsigned char
+get_decimal (unsigned char c)
+{
+  if (c >= 'a' && c <= 'f')
+    c = c - 97 + 10;
+  else if (c >= 'A' && c <= 'F')
+    c = c - 65 + 10;
+  else if (c >= '0' && c <= '9')
+    c -= 48;
+
+  return c;
+}
+
+/* This function converts an input array which has to contain only hex
+   characters into an array with characters that have real decimal
+   values of those hex characters instead of their ASCII values.
+
+   Example: d b 1 4 8
+	element     decimal_value_of_element    decimal_value_of_new_element
+	   d                  100                           13
+	   b                   98                           11
+	   1                   49                            1
+	   4                   52                            4
+	   8                   56                            8                */
+
+static void
+convert_ascii_hex_to_ascii_decimal (const char *in_array, char *out_array,
+			            unsigned long in_array_len)
+{
+  for (unsigned i = 0; i != in_array_len / 2; i++)
+    {
+      unsigned char c1 = in_array[2 * i];
+      unsigned char c2 = in_array[2 * i + 1];
+
+      c1 = get_decimal (c1);
+      c2 = get_decimal (c2);
+
+      out_array[i] = c2 | c1 << 4;
+    }
+}
+
+/* Make the '.note.omnibor' section and write the SHA1 and SHA256 gitoids in it.  */
+
+void
+write_omnibor (const char *gitoid1, const char *gitoid256)
+{
+  asection *s = output_omnibor_section;
+  if (s != NULL)
+    {
+      char gitoid_sha1[GITOID_LENGTH_SHA1];
+      char gitoid_sha256[GITOID_LENGTH_SHA256];
+      Elf_Internal_Shdr *i_shdr;
+      unsigned char *contents, *omnibor_bits_sha1, *omnibor_bits_sha256;
+      bfd_size_type size, size1, size2;
+      file_ptr position;
+      Elf_External_Note *e_note1, *e_note2;
+
+      convert_ascii_hex_to_ascii_decimal (gitoid1, gitoid_sha1,
+					  2 * GITOID_LENGTH_SHA1);
+      convert_ascii_hex_to_ascii_decimal (gitoid256, gitoid_sha256,
+					  2 * GITOID_LENGTH_SHA256);
+      if (bfd_is_abs_section (s->output_section))
+	return;
+      i_shdr = &elf_section_data (s->output_section)->this_hdr;
+
+      if (i_shdr->contents == NULL)
+	{
+	  if (s->contents == NULL)
+	    s->contents = (unsigned char *) xmalloc (s->size);
+	  contents = s->contents;
+	}
+      else
+	contents = i_shdr->contents + s->output_offset;
+
+      /* SHA1 entry.  */
+      e_note1 = (Elf_External_Note *) contents;
+      size1 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
+      size1 = (size1 + 3) & -(bfd_size_type) 4;
+      omnibor_bits_sha1 = contents + size1;
+
+      /* Clear the SHA1 gitoid field.  */
+      memset (omnibor_bits_sha1, 0, GITOID_LENGTH_SHA1);
+
+      bfd_h_put_32 (stdoutput, sizeof "OMNIBOR", &e_note1->namesz);
+      bfd_h_put_32 (stdoutput, GITOID_LENGTH_SHA1, &e_note1->descsz);
+      bfd_h_put_32 (stdoutput, NT_GITOID_SHA1, &e_note1->type);
+      memcpy (e_note1->name, "OMNIBOR", sizeof "OMNIBOR");
+      memcpy (omnibor_bits_sha1, gitoid_sha1, GITOID_LENGTH_SHA1);
+
+      /* SHA256 entry.  */
+      e_note2 = (Elf_External_Note *) (contents + 20 + GITOID_LENGTH_SHA1);
+      size2 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
+      size2 = (size2 + 3) & -(bfd_size_type) 4;
+      omnibor_bits_sha256 = contents + 20 + GITOID_LENGTH_SHA1 + size2;
+
+      /* Clear the SHA256 gitoid field.  */
+      memset (omnibor_bits_sha256, 0, GITOID_LENGTH_SHA256);
+
+      bfd_h_put_32 (stdoutput, sizeof "OMNIBOR", &e_note2->namesz);
+      bfd_h_put_32 (stdoutput, GITOID_LENGTH_SHA256, &e_note2->descsz);
+      bfd_h_put_32 (stdoutput, NT_GITOID_SHA256, &e_note2->type);
+      memcpy (e_note2->name, "OMNIBOR", sizeof "OMNIBOR");
+      memcpy (omnibor_bits_sha256, gitoid_sha256, GITOID_LENGTH_SHA256);
+
+      position = i_shdr->sh_offset + s->output_offset;
+      size = s->size;
+
+      bfd_seek (stdoutput, position, SEEK_SET);
+      bfd_bwrite (contents, size, stdoutput);
+    }
+}
+
+/* Create the '.note.omnibor' section in the output object file
+   if the OmniBOR information calculation is enabled.  */
+
+static void
+create_output_omnibor_section (void)
+{
+  if (omnibor_dir != NULL ||
+     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+    {
+      bfd_size_type size_sha1, size_sha256;
+      flagword flags;
+
+      size_sha1 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
+      size_sha1 = (size_sha1 + 3) & -(bfd_size_type) 4;
+      size_sha1 += GITOID_LENGTH_SHA1;
+      size_sha256 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
+      size_sha256 = (size_sha256 + 3) & -(bfd_size_type) 4;
+      size_sha256 += GITOID_LENGTH_SHA256;
+
+      flags = (SEC_ALLOC | SEC_LOAD | SEC_IN_MEMORY
+	       | SEC_READONLY | SEC_DATA);
+      output_omnibor_section =
+		bfd_make_section_anyway_with_flags (stdoutput, ".note.omnibor",
+						    flags);
+
+      if (output_omnibor_section != NULL &&
+	  bfd_set_section_alignment (output_omnibor_section, 2))
+	{
+	  elf_section_type (output_omnibor_section) = SHT_NOTE;
+	  output_omnibor_section->size = size_sha1 + size_sha256;
+	  output_omnibor_section->output_section = output_omnibor_section;
+	  output_omnibor_section->output_offset = 0;
+	}
+    }
+}
+
+/* This function returns a character which is the hexadecimal representation
+   of the decimal value of the character passed as an argument.  If the
+   character argument has a decimal value which cannot be represented with a
+   single hexadecimal character, the same character is returned.  */
+
+static unsigned char
+get_hex (unsigned char c)
+{
+  if (c >= 10 && c <= 15)
+    c = c + 97 - 10;
+  else if (c <= 9)
+    c += 48;
+
+  return c;
+}
+
+/* This function converts an input character array into an array double its
+   size which consists of pairs of characters.  Each pair corresponds to one
+   element of the input array (high 4b of that element represent the first
+   element in the pair in the output array, while low 4b represent the
+   second one).  In addition, the characters in the pair are also
+   transformed so that they represent hex characters whose decimal value is
+   the value of the characters before the transformation.
+
+   Example:
+
+     Input array: 0b0110_1111  0b0000_1101  0b1010_1010  0b1001_0110
+
+	element     first_element_in_pair    second_element_in_pair
+      0b0110_1111          0b0110                   0b1111
+      0b0000_1101          0b0000                   0b1101
+      0b1010_1010          0b1010                   0b1010
+      0b1001_0110          0b1001                   0b0110
+
+     Output array: 6 f 0 d a a 9 6     (4 pairs of two hex characters)       */
+
+static void
+convert_ascii_decimal_to_ascii_hex (char *in_array, char *out_array,
+			            unsigned long in_array_len)
+{
+  for (unsigned i = 0; i != in_array_len; i++)
+    {
+      unsigned char c1 = (in_array[i] & 0xf0) >> 4;
+      unsigned char c2 = in_array[i] & 0x0f;
+
+      c1 = get_hex (c1);
+      c2 = get_hex (c2);
+
+      out_array[2 * i] = c1;
+      out_array[2 * i + 1] = c2;
+    }
+}
+
+/* Handle '.note.omnibor' section from the input assembly file.  */
+
+static void
+handle_input_omnibor_section (void)
+{
+  /* If the input assembly file has the '.note.omnibor' section, extract
+     the SHA1 and SHA256 gitoids from it so that they can be put as 'bom'
+     parts of the OmniBOR Document files' entries which reference the
+     input assembly file.  */
+  if (omnibor_dir != NULL ||
+     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+    {
+      char *sec_contents_sha1 =
+		(char *) xcalloc (2 * GITOID_LENGTH_SHA1, sizeof (char));
+      char *sec_contents_gitoid_sha1 =
+		(char *) xcalloc (GITOID_LENGTH_SHA1, sizeof (char));
+      char *sec_contents_fin_sha1 =
+		(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
+      bfd_get_section_contents (stdoutput, input_omnibor_section,
+				sec_contents_sha1, 0,
+				20 + GITOID_LENGTH_SHA1);
+      memcpy (sec_contents_gitoid_sha1, sec_contents_sha1 + 20,
+	      GITOID_LENGTH_SHA1);
+      convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid_sha1,
+					  sec_contents_fin_sha1,
+					  GITOID_LENGTH_SHA1);
+      sec_contents_fin_sha1[2 * GITOID_LENGTH_SHA1] = '\0';
+
+      char *sec_contents_sha256 =
+		(char *) xcalloc (2 * GITOID_LENGTH_SHA256, sizeof (char));
+      char *sec_contents_gitoid_sha256 =
+		(char *) xcalloc (GITOID_LENGTH_SHA256 + 1, sizeof (char));
+      char *sec_contents_fin_sha256 =
+		(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
+      bfd_get_section_contents (stdoutput, input_omnibor_section,
+				sec_contents_sha256,
+				20 + GITOID_LENGTH_SHA1,
+				20 + GITOID_LENGTH_SHA256);
+      memcpy (sec_contents_gitoid_sha256, sec_contents_sha256 + 20,
+	      GITOID_LENGTH_SHA256);
+      convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid_sha256,
+					  sec_contents_fin_sha256,
+					  GITOID_LENGTH_SHA256);
+      sec_contents_fin_sha256[2 * GITOID_LENGTH_SHA256] = '\0';
+      omnibor_add_to_note_sections (omnibor_input_filename,
+				    sec_contents_fin_sha1,
+				    sec_contents_fin_sha256,
+				    2 * GITOID_LENGTH_SHA1,
+				    2 * GITOID_LENGTH_SHA256);
+      free (sec_contents_fin_sha256);
+      free (sec_contents_gitoid_sha256);
+      free (sec_contents_sha256);
+      free (sec_contents_fin_sha1);
+      free (sec_contents_gitoid_sha1);
+      free (sec_contents_sha1);
+    }
+}
+
 /* Write the object file.  */
 
 void
@@ -2545,7 +2811,33 @@ write_object_file (void)
       bfd_map_over_sections (stdoutput, compress_debug, (char *) 0);
     }
 
+  {
+    int i;
+
+    input_omnibor_section = bfd_get_section_by_name (stdoutput, ".note.omnibor");
+    if (input_omnibor_section != NULL)
+      {
+	bfd_section_list_remove (stdoutput, input_omnibor_section);
+	stdoutput->section_count --;
+	i = 0;
+	bfd_map_over_sections (stdoutput, renumber_sections, &i);
+      }
+  }
+
+  create_output_omnibor_section ();
+
   bfd_map_over_sections (stdoutput, write_contents, (char *) 0);
+
+  /* Write the contents of the input '.note.omnibor' section (if it exists)
+     into the handle input_omnibor_section and then read the SHA1 and SHA256
+     gitoids from it so as to later add them as 'bom' parts for the
+     dependency which represents the input assembly file in the OmniBOR
+     Document files.  */
+  if (input_omnibor_section != NULL)
+    {
+      write_contents (stdoutput, input_omnibor_section, (char *) 0);
+      handle_input_omnibor_section ();
+    }
 }
 
 #ifdef TC_GENERIC_RELAX_TABLE

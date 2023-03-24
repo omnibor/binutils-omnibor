@@ -119,6 +119,23 @@ segT expr_section;
 segT text_section;
 segT data_section;
 segT bss_section;
+segT input_omnibor_section;
+segT output_omnibor_section;
+
+/* Path of the directory in which to store the OmniBOR information (from
+   --omnibor=<pathname> option).  */
+const char *omnibor_dir = NULL;
+
+/* Name of the input assembler file.  */
+const char *omnibor_input_filename = NULL;
+
+/* Final path of the directory in which to store the OmniBOR information
+   (after resolving precedence levels).  */
+static char *omnibor_dir_final = NULL;
+
+/* Gitoids of the SHA1 and SHA256 OmniBOR Document files.  */
+static char *gitoid_sha1 = NULL;
+static char *gitoid_sha256 = NULL;
 
 /* Name of listing file.  */
 static char *listing_filename = NULL;
@@ -478,6 +495,7 @@ parse_args (int * pargc, char *** pargv)
       OPTION_LISTING_RHS_WIDTH,
       OPTION_LISTING_CONT_LINES,
       OPTION_DEPFILE,
+      OPTION_OMNIBOR,
       OPTION_GSTABS,
       OPTION_GSTABS_PLUS,
       OPTION_GDWARF_2,
@@ -574,6 +592,7 @@ parse_args (int * pargc, char *** pargv)
     ,{"nocpp", no_argument, NULL, OPTION_NOCPP}
     ,{"no-pad-sections", no_argument, NULL, OPTION_NO_PAD_SECTIONS}
     ,{"no-warn", no_argument, NULL, 'W'}
+    ,{"omnibor", optional_argument, NULL, OPTION_OMNIBOR}
     ,{"reduce-memory-overheads", no_argument, NULL, OPTION_REDUCE_MEMORY_OVERHEADS}
     ,{"statistics", no_argument, NULL, OPTION_STATISTICS}
     ,{"strip-local-absolute", no_argument, NULL, OPTION_STRIP_LOCAL_ABSOLUTE}
@@ -946,6 +965,14 @@ This program has absolutely no warranty.\n"));
 #endif
 	  break;
 
+	case OPTION_OMNIBOR:
+	  if (optarg != NULL)
+	    omnibor_dir = optarg;
+	  else
+	    omnibor_dir = "";
+	  omnibor_start_dependencies ();
+	  break;
+
 	case 'R':
 	  flag_readonly_data_in_text = 1;
 	  break;
@@ -1131,6 +1158,12 @@ This program has absolutely no warranty.\n"));
 #ifdef md_after_parse_args
   md_after_parse_args ();
 #endif
+
+  /* If option --omnibor was not passed, check whether the OMNIBOR_DIR
+     environment variable is set.  If yes, enable dependency tracking.  */
+  if (!is_omnibor_enabled () &&
+     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+    omnibor_start_dependencies ();
 }
 
 static void
@@ -1161,6 +1194,22 @@ close_output_file (void)
   output_file_close (out_file_name);
   if (!keep_it)
     unlink_if_ordinary (out_file_name);
+
+  /* Symlink (gitoid_of_object_file -> gitoid_of_omnibor_doc) creation for
+     both SHA1 and SHA256 OmniBOR Document files.  Do it only in the NO_EMBED
+     case (when OMNIBOR_NO_EMBED environment variable is set).  */
+  if (getenv ("OMNIBOR_NO_EMBED") != NULL)
+    if (omnibor_dir != NULL ||
+       (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+      {
+	create_sha1_symlink (gitoid_sha1,
+			     omnibor_dir_final);
+	create_sha256_symlink (gitoid_sha256,
+			       omnibor_dir_final);
+	free (gitoid_sha256);
+	free (gitoid_sha1);
+	free (omnibor_dir_final);
+      }
 }
 
 /* The interface between the macro code and gas expression handling.  */
@@ -1496,6 +1545,68 @@ main (int argc, char ** argv)
 
   /* Only generate dependency file if assembler was successful.  */
   print_dependencies ();
+
+  /* If the calculation of the OmniBOR information is enabled, do it here.
+     Also, determine the directory to store the OmniBOR files in this order of
+     precedence.
+	1. If OMNIBOR_DIR environment variable is set, use this location.
+	2. Use the directory name passed with --omnibor option.
+	3. Default is to write the OmniBOR files in the same directory as the
+	   resulting object file.  */
+  if (omnibor_dir != NULL ||
+     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+    {
+      omnibor_dir_final = (char *) xcalloc (1, sizeof (char));
+
+      const char *env_omnibor = getenv ("OMNIBOR_DIR");
+      if (env_omnibor != NULL)
+        omnibor_set_contents (&omnibor_dir_final, env_omnibor, strlen (env_omnibor));
+
+      if (strlen (omnibor_dir_final) == 0)
+        {
+          if (strlen (omnibor_dir) > 0)
+            omnibor_set_contents (&omnibor_dir_final, omnibor_dir,
+				  strlen (omnibor_dir));
+          else
+            {
+	      char *res = (char *) xcalloc (1, sizeof (char));
+
+              omnibor_get_destdir (getenv ("COLLECT_GCC_OPTIONS"), &res);
+              if (strlen (res) > 0)
+                omnibor_set_contents (&omnibor_dir_final, res, strlen (res));
+              else
+                omnibor_set_contents (&omnibor_dir_final, "", 0);
+
+	      free (res);
+            }
+        }
+
+      gitoid_sha1 = (char *) xcalloc (1, sizeof (char));
+      gitoid_sha256 = (char *) xcalloc (1, sizeof (char));
+      if (strlen (omnibor_dir_final) > 0)
+        {
+          write_sha1_omnibor (&gitoid_sha1, omnibor_dir_final);
+          write_sha256_omnibor (&gitoid_sha256, omnibor_dir_final);
+        }
+      else
+        {
+          write_sha1_omnibor (&gitoid_sha1, NULL);
+          write_sha256_omnibor (&gitoid_sha256, NULL);
+        }
+
+      if (strcmp ("", gitoid_sha1) != 0 && strcmp ("", gitoid_sha256) != 0)
+	write_omnibor (gitoid_sha1, gitoid_sha256);
+
+      omnibor_clear_deps ();
+      omnibor_clear_note_sections ();
+
+      if (getenv ("OMNIBOR_NO_EMBED") == NULL)
+	{
+	  free (gitoid_sha256);
+          free (gitoid_sha1);
+          free (omnibor_dir_final);
+	}
+    }
 
   xexit (EXIT_SUCCESS);
 }

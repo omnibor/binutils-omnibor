@@ -2381,6 +2381,7 @@ assembler.)
 * MD::            --MD for dependency tracking
 * no-pad-sections:: --no-pad-sections to stop section padding
 * o::             -o to name the object file
+* omnibor::	  --omnibor for OmniBOR calculation
 * R::             -R to join data and text sections
 * statistics::    --statistics to see statistics about assembly
 * traditional-format:: --traditional-format for compatible output
@@ -2714,6 +2715,17 @@ object file a different name.
 
 Whatever the object file is called, @command{@value{AS}} overwrites any
 existing file of the same name.
+
+@node omnibor
+@section OmniBOR calculation: @option{--omnibor}
+
+@kindex --omnibor
+@cindex OmniBOR calculation
+
+This option enables the calculation of the OmniBOR information, the generation
+of the OmniBOR Document files for the object file output and the embedding of
+the gitoids of those OmniBOR Document files into the @samp{.note.omnibor} section
+of that object file.
 
 @node R
 @section Join Data and Text Sections: @option{-R}
