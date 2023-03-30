@@ -1571,7 +1571,7 @@ main (int argc, char ** argv)
             {
 	      char *res = (char *) xcalloc (1, sizeof (char));
 
-              omnibor_get_destdir (getenv ("COLLECT_GCC_OPTIONS"), &res);
+              omnibor_get_destdir (&res);
               if (strlen (res) > 0)
                 omnibor_set_contents (&omnibor_dir_final, res, strlen (res));
               else
@@ -1596,6 +1596,8 @@ main (int argc, char ** argv)
 
       if (strcmp ("", gitoid_sha1) != 0 && strcmp ("", gitoid_sha256) != 0)
 	write_omnibor (gitoid_sha1, gitoid_sha256);
+      else
+	as_fatal (_("Error in creation of OmniBOR Document files"));
 
       omnibor_clear_deps ();
       omnibor_clear_note_sections ();
