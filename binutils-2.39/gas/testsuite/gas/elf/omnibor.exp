@@ -1,0 +1,94 @@
+# Expect script for OmniBOR calculation tests.
+#   Copyright (C) 2021-2022 Free Software Foundation, Inc.
+#
+# This file is part of the GNU Binutils.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston,
+# MA 02110-1301, USA.
+#
+
+proc check_omnibor_document_contents_sha1 { omnibor_file test_name } {
+    if [file exists $omnibor_file] then {
+        set file_a [open $omnibor_file r]
+    } else {
+        perror "$omnibor_file doesn't exist"
+    }
+
+    set eof -1
+    set list_a {}
+
+    while { [gets $file_a line] != $eof } {
+        lappend list_a $line
+    }
+    close $file_a
+
+    if { [regexp "^gitoid:blob:sha1 {blob 471936a545bb9506db52fa9ff0e03ad8b7d83771 bom 0206a0b4d17c08ed01b57a37c27b81b154f1aa23}$" $list_a] } then {
+        pass $test_name
+    } else {
+        perror "$list_a"
+        fail $test_name
+    }
+    return 0
+}
+
+proc check_omnibor_document_contents_sha256 { omnibor_file test_name } {
+    if [file exists $omnibor_file] then {
+        set file_a [open $omnibor_file r]
+    } else {
+        perror "$omnibor_file doesn't exist"
+    }
+
+    set eof -1
+    set list_a {}
+
+    while { [gets $file_a line] != $eof } {
+        lappend list_a $line
+    }
+    close $file_a
+
+    if { [regexp "^gitoid:blob:sha256 {blob 3eb368b9b7aea36e2c0270e0a760c6c41f2ff8387620369dc9f81f2c31f0e931 bom 3bc2f893cab66e0230a3410b23f9e804b6984a7c392ee3e9735e092dacb3d9a8}$" $list_a] } then {
+        pass $test_name
+    } else {
+        perror "$list_a"
+        fail $test_name
+    }
+    return 0
+}
+
+set env(OMNIBOR_DIR) "env_dir"
+
+run_dump_test "omnibor" [list [list as --omnibor] [list warning ".*"]]
+run_dump_test "omnibor" [list [list as --omnibor=dir] [list warning ".*"]]
+run_dump_test "omnibor" [list [list warning ".*"]]
+
+check_omnibor_document_contents_sha1 "env_dir/objects/gitoid_blob_sha1/fe/2bd8f74815e578a2eed695357239e54fe88848" "OmniBOR SHA1 Document file contents 1"
+
+check_omnibor_document_contents_sha256 "env_dir/objects/gitoid_blob_sha256/58/fc982259aecdb07634390a8b4ba1ac3024c40ac1f2770a17451c87cf2e313c" "OmniBOR SHA256 Document file contents 1"
+
+unset env(OMNIBOR_DIR)
+
+run_dump_test "omnibor" [list [list as --omnibor] [list warning ".*"]]
+
+# OmniBOR information is stored in tmpdir because the resulting object file is stored there
+check_omnibor_document_contents_sha1 "tmpdir/objects/gitoid_blob_sha1/fe/2bd8f74815e578a2eed695357239e54fe88848" "OmniBOR SHA1 Document file contents 2"
+
+# OmniBOR information is stored in tmpdir because the resulting object file is stored there
+check_omnibor_document_contents_sha256 "tmpdir/objects/gitoid_blob_sha256/58/fc982259aecdb07634390a8b4ba1ac3024c40ac1f2770a17451c87cf2e313c" "OmniBOR SHA256 Document file contents 2"
+
+run_dump_test "omnibor" [list [list as --omnibor=dir] [list warning ".*"]]
+
+check_omnibor_document_contents_sha1 "dir/objects/gitoid_blob_sha1/fe/2bd8f74815e578a2eed695357239e54fe88848" "OmniBOR SHA1 Document file contents 3"
+
+check_omnibor_document_contents_sha256 "dir/objects/gitoid_blob_sha256/58/fc982259aecdb07634390a8b4ba1ac3024c40ac1f2770a17451c87cf2e313c" "OmniBOR SHA256 Document file contents 3"
