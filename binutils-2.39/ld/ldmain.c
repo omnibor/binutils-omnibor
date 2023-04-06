@@ -331,50 +331,20 @@ omnibor_set_contents (char **str1, const char *str2, unsigned long len)
    and --omnibor=<arg> is not used, but --omnibor is used instead).  */
 
 static void
-omnibor_get_destdir (const char *gcc_opts, char **res)
+omnibor_get_destdir (char **res)
 {
-  char *path = (char *) xcalloc (1, sizeof (char));
   char *temp = (char *) xcalloc (1, sizeof (char));
 
-  int old_i = 0, i = 0;
-  while ((i = omnibor_find_char_from_pos (i, ' ', gcc_opts)) != -1)
+  int i = -1;
+
+  if ((i = omnibor_find_last_of ('/', output_filename)) != -1)
     {
-      omnibor_substr (&temp, old_i, i - old_i, gcc_opts);
-      if (strcmp ("'-o'", temp) == 0)
-        {
-          i = i + 1;
-	  old_i = i;
-
-          if ((i = omnibor_find_char_from_pos (i, ' ', gcc_opts)) != -1)
-            {
-              omnibor_substr (&temp, old_i + 1, i - old_i - 2, gcc_opts);
-              omnibor_set_contents (&path, temp, strlen (temp));
-	      i = i + 1;
-	      old_i = i;
-            }
-        }
-      else
-        {
-          i = i + 1;
-	  old_i = i;
-        }
-    }
-
-  /* Last argument cannot be '-o' because gcc error will be raised that a
-     filename is missing after that option in that case.  */
-  i = -1;
-
-  /* If there was a valid '-o' option, parse the directory part of the path
-     and put it in the res parameter.  */
-  if ((i = omnibor_find_last_of ('/', path)) != -1)
-    {
-      omnibor_substr (&temp, 0, i, path);
+      omnibor_substr (&temp, 0, i, output_filename);
       omnibor_set_contents (res, temp, strlen (temp));
     }
   else
     omnibor_set_contents (res, "", 0);
 
-  free (path);
   free (temp);
 }
 
@@ -937,7 +907,8 @@ omnibor_is_note_section_present (const char *name, unsigned hash_func_type)
    string, the OmniBOR information is stored in the current working directory.
    The hash_size parameter has to be either GITOID_LENGTH_SHA1 (for the SHA1
    OmniBOR information) or GITOID_LENGTH_SHA256 (for the SHA256 OmniBOR
-   information).  */
+   information).  If any error occurs during the creation of the OmniBOR
+   Document file, name parameter is set to point to an empty string.  */
 
 static void
 create_omnibor_document_file (char **name, const char *result_dir,
@@ -945,7 +916,10 @@ create_omnibor_document_file (char **name, const char *result_dir,
 			      unsigned int hash_size)
 {
   if (hash_size != GITOID_LENGTH_SHA1 && hash_size != GITOID_LENGTH_SHA256)
-    return;
+    {
+      omnibor_set_contents (name, "", 0);
+      return;
+    }
 
   char *path_objects = (char *) xcalloc (1, sizeof (char));
   omnibor_append_to_string (&path_objects, "objects", strlen (path_objects),
@@ -974,6 +948,8 @@ create_omnibor_document_file (char **name, const char *result_dir,
              information is not written.  */
           /* TODO: Maybe put a message here that a specified path, in which
 	     the OmniBOR information should be stored, is illegal.  */
+	  /* TODO: In case of an error, if any directories were created,
+	     remove them.  */
           if (final_dir == NULL)
             {
               close_all_directories_in_path ();
@@ -1104,10 +1080,14 @@ create_omnibor_document_file (char **name, const char *result_dir,
 			    2 * hash_size - 2);
 
   FILE *new_file = fopen (new_file_path, "w");
+  if (new_file != NULL)
+    {
+      fwrite (new_file_contents, sizeof (char), new_file_size, new_file);
+      fclose (new_file);
+    }
+  else
+    omnibor_set_contents (name, "", 0);
 
-  fwrite (new_file_contents, sizeof (char), new_file_size, new_file);
-
-  fclose (new_file);
   closedir (dir_four);
   closedir (dir_three);
   closedir (dir_two);
@@ -1150,6 +1130,8 @@ write_sha1_omnibor (char **name, const char *result_dir)
 	  continue;
 
       FILE *dep_file_handle = fopen (dep->name, "rb");
+      if (dep_file_handle == NULL)
+	continue;
       unsigned char resblock[GITOID_LENGTH_SHA1];
 
       calculate_sha1_omnibor (dep_file_handle, resblock);
@@ -1265,6 +1247,8 @@ write_sha256_omnibor (char **name, const char *result_dir)
 	  continue;
 
       FILE *dep_file_handle = fopen (dep->name, "rb");
+      if (dep_file_handle == NULL)
+	continue;
       unsigned char resblock[GITOID_LENGTH_SHA256];
 
       calculate_sha256_omnibor (dep_file_handle, resblock);
@@ -1362,6 +1346,13 @@ create_sha1_symlink (const char *gitoid_sha1, char *res_dir)
   low_ch[1] = '\0';
 
   FILE *file_executable = fopen (output_filename, "rb");
+  if (file_executable == NULL)
+    {
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha1);
+      return;
+    }
   unsigned char resblock[GITOID_LENGTH_SHA1];
 
   calculate_sha1_omnibor (file_executable, resblock);
@@ -1442,6 +1433,13 @@ create_sha256_symlink (const char *gitoid_sha256, char *res_dir)
   low_ch[1] = '\0';
 
   FILE *file_executable = fopen (output_filename, "rb");
+  if (file_executable == NULL)
+    {
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha256);
+      return;
+    }
   unsigned char resblock[GITOID_LENGTH_SHA256];
 
   calculate_sha256_omnibor (file_executable, resblock);
@@ -1862,7 +1860,7 @@ main (int argc, char **argv)
             {
 	      char *res = (char *) xcalloc (1, sizeof (char));
 
-              omnibor_get_destdir (getenv ("COLLECT_GCC_OPTIONS"), &res);
+              omnibor_get_destdir (&res);
               if (strlen (res) > 0)
                 omnibor_set_contents (&omnibor_dir, res, strlen (res));
               else
@@ -1890,11 +1888,21 @@ main (int argc, char **argv)
 
       if (strcmp ("", gitoid_sha1) == 0 || strcmp ("", gitoid_sha256) == 0)
         {
-          memcpy (ldelf_emit_note_omnibor_sha1, gitoid_sha1, strlen (gitoid_sha1));
-	  ldelf_emit_note_omnibor_sha1[strlen (gitoid_sha1)] = '\0';
-	  memcpy (ldelf_emit_note_omnibor_sha256, gitoid_sha256,
-		  strlen (gitoid_sha256));
-	  ldelf_emit_note_omnibor_sha256[strlen (gitoid_sha256)] = '\0';
+          if (ldelf_emit_note_omnibor_sha1 != NULL)
+	    {
+	      free (ldelf_emit_note_omnibor_sha1);
+	      ldelf_emit_note_omnibor_sha1 = NULL;
+	    }
+	  if (ldelf_emit_note_omnibor_sha256 != NULL)
+	    {
+	      free (ldelf_emit_note_omnibor_sha256);
+	      ldelf_emit_note_omnibor_sha256 = NULL;
+	    }
+	  free (gitoid_sha256);
+	  free (gitoid_sha1);
+	  free (omnibor_dir);
+	  einfo (_("%P: Error in creation of OmniBOR Document files\n"));
+	  xexit (1);
         }
       else
         {
