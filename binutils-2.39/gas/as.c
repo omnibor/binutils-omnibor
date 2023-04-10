@@ -1597,7 +1597,12 @@ main (int argc, char ** argv)
       if (strcmp ("", gitoid_sha1) != 0 && strcmp ("", gitoid_sha256) != 0)
 	write_omnibor (gitoid_sha1, gitoid_sha256);
       else
-	as_fatal (_("Error in creation of OmniBOR Document files"));
+        {
+          free (gitoid_sha256);
+          free (gitoid_sha1);
+          free (omnibor_dir_final);
+	  as_fatal (_("Error in creation of OmniBOR Document files"));
+	}
 
       omnibor_clear_deps ();
       omnibor_clear_note_sections ();
