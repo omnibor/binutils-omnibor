@@ -2812,32 +2812,54 @@ write_object_file (void)
     }
 
   {
-    int i;
-
     input_omnibor_section = bfd_get_section_by_name (stdoutput, ".note.omnibor");
     if (input_omnibor_section != NULL)
       {
-	bfd_section_list_remove (stdoutput, input_omnibor_section);
-	stdoutput->section_count --;
-	i = 0;
-	bfd_map_over_sections (stdoutput, renumber_sections, &i);
+        /* If the input to the assembler is a temporary file, the OmniBOR
+	   information in it is valid, as the assembler invocation is a
+	   part of the whole compilation process from source file to the
+	   object file or even executable.  Therefore, there is no need to
+	   generate an unnecessary set of OmniBOR Document files referring
+	   to the actual OmniBOR information extracted from the assembler
+	   input and assembler should just carry that OmniBOR information
+	   forward.  If the input to the assembler is an existing file,
+	   it is checked whether OmniBOR calculation is enabled in the
+	   assembler.  If yes, then the OmniBOR information from the input
+	   is extracted, new set of OmniBOR Document files is created and
+	   the extracted OmniBOR information is put in the 'bom' part of
+	   the dependency entry which corresponds to the input assembly
+	   file.  If not, the '.note.omnibor' section from the input
+	   assembly file is excluded from the output object file, since
+	   it holds the OmniBOR information of the dependencies for that
+	   assembly file, not necessarily the output object file.  */
+	if (omnibor_input_file_is_temporary ||
+	   (omnibor_dir != NULL ||
+	   (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0)))
+	  {
+	    output_omnibor_section = input_omnibor_section;
+	    elf_section_type (output_omnibor_section) = SHT_NOTE;
+	  }
+	else
+	  {
+	    output_omnibor_section = NULL;
+	    bfd_section_list_remove (stdoutput, input_omnibor_section);
+	    stdoutput->section_count --;
+	    int i = 0;
+	    bfd_map_over_sections (stdoutput, renumber_sections, &i);
+	  }
       }
+    else
+      create_output_omnibor_section ();
   }
-
-  create_output_omnibor_section ();
 
   bfd_map_over_sections (stdoutput, write_contents, (char *) 0);
 
-  /* Write the contents of the input '.note.omnibor' section (if it exists)
-     into the handle input_omnibor_section and then read the SHA1 and SHA256
-     gitoids from it so as to later add them as 'bom' parts for the
+  /* Read the SHA1 and SHA256 gitoids from the input '.note.omnibor'
+     section so as to later add them as 'bom' parts for the
      dependency which represents the input assembly file in the OmniBOR
      Document files.  */
-  if (input_omnibor_section != NULL)
-    {
-      write_contents (stdoutput, input_omnibor_section, (char *) 0);
-      handle_input_omnibor_section ();
-    }
+  if (input_omnibor_section != NULL && !omnibor_input_file_is_temporary)
+    handle_input_omnibor_section ();
 }
 
 #ifdef TC_GENERIC_RELAX_TABLE

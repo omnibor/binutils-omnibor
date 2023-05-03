@@ -509,6 +509,7 @@ void create_sha256_symlink (const char *, char *);
 void write_omnibor (const char *, const char *);
 
 /* OmniBOR-related variable declarations.  Defined in as.c.  */
+extern bool omnibor_input_file_is_temporary;
 extern const char *omnibor_dir;
 extern const char *omnibor_input_filename;
 

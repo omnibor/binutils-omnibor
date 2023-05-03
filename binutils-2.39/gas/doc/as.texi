@@ -2382,6 +2382,7 @@ assembler.)
 * no-pad-sections:: --no-pad-sections to stop section padding
 * o::             -o to name the object file
 * omnibor::	  --omnibor for OmniBOR calculation
+* omnibor-tempfile:: --omnibor-tempfile to specify that the input file is temporary
 * R::             -R to join data and text sections
 * statistics::    --statistics to see statistics about assembly
 * traditional-format:: --traditional-format for compatible output
@@ -2726,6 +2727,18 @@ This option enables the calculation of the OmniBOR information, the generation
 of the OmniBOR Document files for the object file output and the embedding of
 the gitoids of those OmniBOR Document files into the @samp{.note.omnibor} section
 of that object file.
+
+@node omnibor-tempfile
+@section Specify that the assembler input is temporary: @option{--omnibor-tempfile}
+
+@kindex --omnibor-tempfile
+@cindex Specify that the assembler input is temporary
+
+This option tells the assembler that its input is temporary, which is useful
+information when analyzing the OmniBOR information in the input and when
+calculating the OmniBOR information by the assembler.  If this option is not set,
+assembler considers that its input is existing.  This option can be used outside
+the OmniBOR concept, but it is not recommended.
 
 @node R
 @section Join Data and Text Sections: @option{-R}

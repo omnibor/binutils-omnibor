@@ -122,6 +122,13 @@ segT bss_section;
 segT input_omnibor_section;
 segT output_omnibor_section;
 
+/* Flag indicating whether the input file to the assembler is a
+   temporary file or an existing file (true - temporary,
+   false - existing).  This indicator is controlled by the
+   --omnibor-tempfile option so it can be changed by manually
+   using that option, which is not recommended.  */
+bool omnibor_input_file_is_temporary = false;
+
 /* Path of the directory in which to store the OmniBOR information (from
    --omnibor=<pathname> option).  */
 const char *omnibor_dir = NULL;
@@ -496,6 +503,7 @@ parse_args (int * pargc, char *** pargv)
       OPTION_LISTING_CONT_LINES,
       OPTION_DEPFILE,
       OPTION_OMNIBOR,
+      OPTION_OMNIBOR_TEMPFILE,
       OPTION_GSTABS,
       OPTION_GSTABS_PLUS,
       OPTION_GDWARF_2,
@@ -593,6 +601,7 @@ parse_args (int * pargc, char *** pargv)
     ,{"no-pad-sections", no_argument, NULL, OPTION_NO_PAD_SECTIONS}
     ,{"no-warn", no_argument, NULL, 'W'}
     ,{"omnibor", optional_argument, NULL, OPTION_OMNIBOR}
+    ,{"omnibor-tempfile", no_argument, NULL, OPTION_OMNIBOR_TEMPFILE}
     ,{"reduce-memory-overheads", no_argument, NULL, OPTION_REDUCE_MEMORY_OVERHEADS}
     ,{"statistics", no_argument, NULL, OPTION_STATISTICS}
     ,{"strip-local-absolute", no_argument, NULL, OPTION_STRIP_LOCAL_ABSOLUTE}
@@ -973,6 +982,10 @@ This program has absolutely no warranty.\n"));
 	  omnibor_start_dependencies ();
 	  break;
 
+	case OPTION_OMNIBOR_TEMPFILE:
+	  omnibor_input_file_is_temporary = true;
+	  break;
+
 	case 'R':
 	  flag_readonly_data_in_text = 1;
 	  break;
@@ -1199,8 +1212,9 @@ close_output_file (void)
      both SHA1 and SHA256 OmniBOR Document files.  Do it only in the NO_EMBED
      case (when OMNIBOR_NO_EMBED environment variable is set).  */
   if (getenv ("OMNIBOR_NO_EMBED") != NULL)
-    if (omnibor_dir != NULL ||
-       (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+    if ((omnibor_dir != NULL ||
+	(getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0)) &&
+	!(omnibor_input_file_is_temporary && input_omnibor_section != NULL))
       {
 	create_sha1_symlink (gitoid_sha1,
 			     omnibor_dir_final);
@@ -1553,8 +1567,9 @@ main (int argc, char ** argv)
 	2. Use the directory name passed with --omnibor option.
 	3. Default is to write the OmniBOR files in the same directory as the
 	   resulting object file.  */
-  if (omnibor_dir != NULL ||
-     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+  if ((omnibor_dir != NULL ||
+      (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0)) &&
+      !(omnibor_input_file_is_temporary && input_omnibor_section != NULL))
     {
       omnibor_dir_final = (char *) xcalloc (1, sizeof (char));
 
