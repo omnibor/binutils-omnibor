@@ -2381,7 +2381,7 @@ assembler.)
 * MD::            --MD for dependency tracking
 * no-pad-sections:: --no-pad-sections to stop section padding
 * o::             -o to name the object file
-* omnibor::	  --omnibor for OmniBOR calculation
+* omnibor::	  --omnibor=<dir> for OmniBOR calculation
 * omnibor-tempfile:: --omnibor-tempfile to specify that the input file is temporary
 * R::             -R to join data and text sections
 * statistics::    --statistics to see statistics about assembly

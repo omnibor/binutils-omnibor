@@ -281,20 +281,6 @@ omnibor_find_char_from_pos (unsigned start_pos, char c, const char *str)
   return -1;
 }
 
-/* Return the position of the last occurrence of char c in the entire
-   str string.  */
-
-static int
-omnibor_find_last_of (char c, const char *str)
-{
-  int ret = -1;
-  for (unsigned ix = 0; ix < strlen (str); ix++)
-    if (str[ix] == c)
-      ret = ix;
-
-  return ret;
-}
-
 /* Append the string str2 to the end of the string str1.  */
 
 static void
@@ -346,28 +332,6 @@ omnibor_set_contents (char **str1, const char *str2, unsigned long len)
 	(*str1, sizeof (char) * (len + 1));
   memcpy (*str1, str2, len);
   (*str1)[len] = '\0';
-}
-
-/* Get the path of the directory where the resulting object file will be
-   stored, because the OmniBOR information should be stored there as well,
-   in the default case (when OMNIBOR_DIR environment variable is not set
-   and --omnibor=<arg> is not used, but --omnibor is used instead).  */
-
-void
-omnibor_get_destdir (char **res)
-{
-  char *temp = (char *) xcalloc (1, sizeof (char));
-
-  int i = -1;
-  if ((i = omnibor_find_last_of ('/', out_file_name)) != -1)
-    {
-      omnibor_substr (&temp, 0, i, out_file_name);
-      omnibor_set_contents (res, temp, strlen (temp));
-    }
-  else
-    omnibor_set_contents (res, "", 0);
-
-  free (temp);
 }
 
 /* Open all the directories from the path specified in the res_dir
@@ -925,12 +889,11 @@ omnibor_is_note_section_present (const char *name, unsigned hash_func_type)
 }
 
 /* Store the OmniBOR information in the specified directory whose path is
-   written in the result_dir parameter.  If result_dir is NULL or an empty
-   string, the OmniBOR information is stored in the current working directory.
-   The hash_size parameter has to be either GITOID_LENGTH_SHA1 (for the SHA1
-   OmniBOR information) or GITOID_LENGTH_SHA256 (for the SHA256 OmniBOR
-   information).  If any error occurs during the creation of the OmniBOR
-   Document file, name parameter is set to point to an empty string.  */
+   written in the result_dir parameter.  The hash_size parameter has to be
+   either GITOID_LENGTH_SHA1 (for the SHA1 OmniBOR information) or
+   GITOID_LENGTH_SHA256 (for the SHA256 OmniBOR information).  If any error
+   occurs during the creation of the OmniBOR Document file, name parameter
+   is set to point to an empty string.  */
 
 static void
 create_omnibor_document_file (char **name, const char *result_dir,
@@ -987,12 +950,21 @@ create_omnibor_document_file (char **name, const char *result_dir,
               mkdirat (dfd1, "objects", S_IRWXU);
             }
         }
+      /* This point should not be reachable.  */
       else
-        mkdir ("objects", S_IRWXU);
+	{
+	  free (path_objects);
+	  omnibor_set_contents (name, "", 0);
+	  return;
+	}
     }
-  /* Put the OmniBOR Document file in the current working directory.  */
+  /* This point should not be reachable.  */
   else
-    mkdir ("objects", S_IRWXU);
+    {
+      free (path_objects);
+      omnibor_set_contents (name, "", 0);
+      return;
+    }
 
   DIR *dir_two = opendir (path_objects);
   if (dir_two == NULL)
@@ -1415,13 +1387,14 @@ create_sha1_symlink (const char *gitoid_sha1, char *res_dir)
       omnibor_append_to_string (&path_adg, "/.adg", strlen (path_adg),
 				strlen ("/.adg"));
     }
+  /* This point should not be reachable.  */
   else
     {
-      mkdir (".adg", S_IRWXU);
-      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
-				strlen (res_dir));
-      omnibor_append_to_string (&path_adg, ".adg", strlen (path_adg),
-				strlen (".adg"));
+      free (path_adg);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_obj_sha1);
+      return;
     }
 
   dir_adg = opendir (path_adg);
@@ -1504,13 +1477,14 @@ create_sha256_symlink (const char *gitoid_sha256, char *res_dir)
       omnibor_append_to_string (&path_adg, "/.adg", strlen (path_adg),
 				strlen ("/.adg"));
     }
+  /* This point should not be reachable.  */
   else
     {
-      mkdir (".adg", S_IRWXU);
-      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
-				strlen (res_dir));
-      omnibor_append_to_string (&path_adg, ".adg", strlen (path_adg),
-				strlen (".adg"));
+      free (path_adg);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_obj_sha256);
+      return;
     }
 
   dir_adg = opendir (path_adg);

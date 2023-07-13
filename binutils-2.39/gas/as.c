@@ -600,7 +600,7 @@ parse_args (int * pargc, char *** pargv)
     ,{"nocpp", no_argument, NULL, OPTION_NOCPP}
     ,{"no-pad-sections", no_argument, NULL, OPTION_NO_PAD_SECTIONS}
     ,{"no-warn", no_argument, NULL, 'W'}
-    ,{"omnibor", optional_argument, NULL, OPTION_OMNIBOR}
+    ,{"omnibor", required_argument, NULL, OPTION_OMNIBOR}
     ,{"omnibor-tempfile", no_argument, NULL, OPTION_OMNIBOR_TEMPFILE}
     ,{"reduce-memory-overheads", no_argument, NULL, OPTION_REDUCE_MEMORY_OVERHEADS}
     ,{"statistics", no_argument, NULL, OPTION_STATISTICS}
@@ -975,10 +975,10 @@ This program has absolutely no warranty.\n"));
 	  break;
 
 	case OPTION_OMNIBOR:
-	  if (optarg != NULL)
+	  if (optarg != NULL && strlen (optarg) > 0)
 	    omnibor_dir = optarg;
 	  else
-	    omnibor_dir = "";
+	    as_fatal (_("expected argument to --omnibor= but none provided"));
 	  omnibor_start_dependencies ();
 	  break;
 
@@ -1172,7 +1172,7 @@ This program has absolutely no warranty.\n"));
   md_after_parse_args ();
 #endif
 
-  /* If option --omnibor was not passed, check whether the OMNIBOR_DIR
+  /* If option --omnibor=<dir> was not passed, check whether the OMNIBOR_DIR
      environment variable is set.  If yes, enable dependency tracking.  */
   if (!is_omnibor_enabled () &&
      (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
@@ -1563,38 +1563,25 @@ main (int argc, char ** argv)
   /* If the calculation of the OmniBOR information is enabled, do it here.
      Also, determine the directory to store the OmniBOR files in this order of
      precedence.
-	1. If OMNIBOR_DIR environment variable is set, use this location.
-	2. Use the directory name passed with --omnibor option.
-	3. Default is to write the OmniBOR files in the same directory as the
-	   resulting object file.  */
+	1. Use the directory name passed with --omnibor= option.
+	2. Use the location set in OMNIBOR_DIR environment variable.  */
   if ((omnibor_dir != NULL ||
       (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0)) &&
       !(omnibor_input_file_is_temporary && input_omnibor_section != NULL))
     {
       omnibor_dir_final = (char *) xcalloc (1, sizeof (char));
 
-      const char *env_omnibor = getenv ("OMNIBOR_DIR");
-      if (env_omnibor != NULL)
-        omnibor_set_contents (&omnibor_dir_final, env_omnibor, strlen (env_omnibor));
+      if (omnibor_dir != NULL && strlen (omnibor_dir) > 0)
+	omnibor_set_contents (&omnibor_dir_final, omnibor_dir,
+			      strlen (omnibor_dir));
 
       if (strlen (omnibor_dir_final) == 0)
-        {
-          if (strlen (omnibor_dir) > 0)
-            omnibor_set_contents (&omnibor_dir_final, omnibor_dir,
-				  strlen (omnibor_dir));
-          else
-            {
-	      char *res = (char *) xcalloc (1, sizeof (char));
-
-              omnibor_get_destdir (&res);
-              if (strlen (res) > 0)
-                omnibor_set_contents (&omnibor_dir_final, res, strlen (res));
-              else
-                omnibor_set_contents (&omnibor_dir_final, "", 0);
-
-	      free (res);
-            }
-        }
+	{
+	  const char *env_omnibor = getenv ("OMNIBOR_DIR");
+	  if (env_omnibor != NULL)
+	    omnibor_set_contents (&omnibor_dir_final, env_omnibor,
+				  strlen (env_omnibor));
+	}
 
       gitoid_sha1 = (char *) xcalloc (1, sizeof (char));
       gitoid_sha256 = (char *) xcalloc (1, sizeof (char));
@@ -1603,10 +1590,11 @@ main (int argc, char ** argv)
           write_sha1_omnibor (&gitoid_sha1, omnibor_dir_final);
           write_sha256_omnibor (&gitoid_sha256, omnibor_dir_final);
         }
+      /* This else should be unreachable.  */
       else
         {
-          write_sha1_omnibor (&gitoid_sha1, NULL);
-          write_sha256_omnibor (&gitoid_sha256, NULL);
+          omnibor_set_contents (&gitoid_sha1, "", 0);
+          omnibor_set_contents (&gitoid_sha256, "", 0);
         }
 
       if (strcmp ("", gitoid_sha1) != 0 && strcmp ("", gitoid_sha256) != 0)

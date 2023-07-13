@@ -285,7 +285,7 @@ typedef struct
   char *dependency_file;
 
   /* The path to the directory where the OmniBOR information should be
-     placed, unless OMNIBOR_DIR environment variable is set.  */
+     placed.  */
   char *omnibor_dir;
 
   unsigned int split_by_reloc;
