@@ -69,26 +69,22 @@ proc check_omnibor_document_contents_sha256 { omnibor_file test_name } {
 
 set env(OMNIBOR_DIR) "env_dir"
 
-run_dump_test "omnibor" [list [list as --omnibor] [list warning ".*"]]
 run_dump_test "omnibor" [list [list as --omnibor=dir] [list warning ".*"]]
+
+check_omnibor_document_contents_sha1 "dir/objects/gitoid_blob_sha1/fe/2bd8f74815e578a2eed695357239e54fe88848" "OmniBOR SHA1 Document file contents 1"
+
+check_omnibor_document_contents_sha256 "dir/objects/gitoid_blob_sha256/58/fc982259aecdb07634390a8b4ba1ac3024c40ac1f2770a17451c87cf2e313c" "OmniBOR SHA256 Document file contents 1"
+
 run_dump_test "omnibor" [list [list warning ".*"]]
 
-check_omnibor_document_contents_sha1 "env_dir/objects/gitoid_blob_sha1/fe/2bd8f74815e578a2eed695357239e54fe88848" "OmniBOR SHA1 Document file contents 1"
+check_omnibor_document_contents_sha1 "env_dir/objects/gitoid_blob_sha1/fe/2bd8f74815e578a2eed695357239e54fe88848" "OmniBOR SHA1 Document file contents 2"
 
-check_omnibor_document_contents_sha256 "env_dir/objects/gitoid_blob_sha256/58/fc982259aecdb07634390a8b4ba1ac3024c40ac1f2770a17451c87cf2e313c" "OmniBOR SHA256 Document file contents 1"
+check_omnibor_document_contents_sha256 "env_dir/objects/gitoid_blob_sha256/58/fc982259aecdb07634390a8b4ba1ac3024c40ac1f2770a17451c87cf2e313c" "OmniBOR SHA256 Document file contents 2"
 
 unset env(OMNIBOR_DIR)
 
-run_dump_test "omnibor" [list [list as --omnibor] [list warning ".*"]]
+run_dump_test "omnibor" [list [list as --omnibor=option_dir] [list warning ".*"]]
 
-# OmniBOR information is stored in tmpdir because the resulting object file is stored there
-check_omnibor_document_contents_sha1 "tmpdir/objects/gitoid_blob_sha1/fe/2bd8f74815e578a2eed695357239e54fe88848" "OmniBOR SHA1 Document file contents 2"
+check_omnibor_document_contents_sha1 "option_dir/objects/gitoid_blob_sha1/fe/2bd8f74815e578a2eed695357239e54fe88848" "OmniBOR SHA1 Document file contents 3"
 
-# OmniBOR information is stored in tmpdir because the resulting object file is stored there
-check_omnibor_document_contents_sha256 "tmpdir/objects/gitoid_blob_sha256/58/fc982259aecdb07634390a8b4ba1ac3024c40ac1f2770a17451c87cf2e313c" "OmniBOR SHA256 Document file contents 2"
-
-run_dump_test "omnibor" [list [list as --omnibor=dir] [list warning ".*"]]
-
-check_omnibor_document_contents_sha1 "dir/objects/gitoid_blob_sha1/fe/2bd8f74815e578a2eed695357239e54fe88848" "OmniBOR SHA1 Document file contents 3"
-
-check_omnibor_document_contents_sha256 "dir/objects/gitoid_blob_sha256/58/fc982259aecdb07634390a8b4ba1ac3024c40ac1f2770a17451c87cf2e313c" "OmniBOR SHA256 Document file contents 3"
+check_omnibor_document_contents_sha256 "option_dir/objects/gitoid_blob_sha256/58/fc982259aecdb07634390a8b4ba1ac3024c40ac1f2770a17451c87cf2e313c" "OmniBOR SHA256 Document file contents 3"

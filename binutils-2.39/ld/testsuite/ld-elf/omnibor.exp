@@ -25,7 +25,7 @@ if ![is_elf_format] {
     return
 }
 
-proc check_omnibor_document_contents_sha1 { omnibor_file test_name } {
+proc check_omnibor_document_contents_sha1 { omnibor_file test_name contents } {
     if [file exists $omnibor_file] then {
         set file_a [open $omnibor_file r]
     } else {
@@ -40,7 +40,7 @@ proc check_omnibor_document_contents_sha1 { omnibor_file test_name } {
     }
     close $file_a
 
-    if { [regexp "^gitoid:blob:sha1 {blob d138dc90198e9370085e65f8bfec82d81e245c56}$" $list_a] } then {
+    if { [regexp $contents $list_a] } then {
         pass $test_name
     } else {
         perror "$list_a"
@@ -49,7 +49,7 @@ proc check_omnibor_document_contents_sha1 { omnibor_file test_name } {
     return 0
 }
 
-proc check_omnibor_document_contents_sha256 { omnibor_file test_name } {
+proc check_omnibor_document_contents_sha256 { omnibor_file test_name contents } {
     if [file exists $omnibor_file] then {
         set file_a [open $omnibor_file r]
     } else {
@@ -64,7 +64,7 @@ proc check_omnibor_document_contents_sha256 { omnibor_file test_name } {
     }
     close $file_a
 
-    if { [regexp "^gitoid:blob:sha256 {blob c3d71ad569a20d9c13a2fadcfce2c254d1a61151edd5e9958d5fdc238d431693}$" $list_a] } then {
+    if { [regexp $contents $list_a] } then {
         pass $test_name
     } else {
         perror "$list_a"
@@ -77,14 +77,21 @@ set env(OMNIBOR_DIR) "env_dir"
 
 run_ld_link_tests [list \
     [list \
-	"OmniBOR calculation with OMNIBOR_DIR and --omnibor" \
-	"-r --omnibor" \
+	"OmniBOR calculation with OMNIBOR_DIR and --omnibor=dir" \
+	"-r --omnibor=dir" \
 	"" \
 	"" \
 	{dummy.s} \
 	{{readelf {--notes} omnibor.rd}} \
 	"omnibor1.o" \
     ] \
+]
+
+check_omnibor_document_contents_sha1 "dir/objects/gitoid_blob_sha1/6b/0ac07f1736ad1ab3827034891ef9b03639a9ed" "OmniBOR SHA1 Document file contents 1" "^gitoid:blob:sha1 {blob 4ce706e35bbd9f9b5ea77dfa4337417b3859aaa4 bom a965126fdde0463cb4718528cab7081e92b9e140}$"
+
+check_omnibor_document_contents_sha256 "dir/objects/gitoid_blob_sha256/4f/1fa8a498c16fdcd24d5d9c909e2a69e8c2d14574154c3ca8d76a3f6ede639c" "OmniBOR SHA256 Document file contents 1" "^gitoid:blob:sha256 {blob 89049366024b9ff5aaf9efd137248849f4a611c4b4049e063c3ef5326bf437ca bom 6d8d98ed995192169a6522b0d4f03948c9991de507e4fc14b012f07be2581752}$"
+
+run_ld_link_tests [list \
     [list \
 	"OmniBOR calculation with OMNIBOR_DIR" \
 	"-r" \
@@ -94,9 +101,18 @@ run_ld_link_tests [list \
 	{{readelf {--notes} omnibor.rd}} \
 	"omnibor2.o" \
     ] \
+]
+
+check_omnibor_document_contents_sha1 "env_dir/objects/gitoid_blob_sha1/6b/0ac07f1736ad1ab3827034891ef9b03639a9ed" "OmniBOR SHA1 Document file contents 2" "^gitoid:blob:sha1 {blob 4ce706e35bbd9f9b5ea77dfa4337417b3859aaa4 bom a965126fdde0463cb4718528cab7081e92b9e140}$"
+
+check_omnibor_document_contents_sha256 "env_dir/objects/gitoid_blob_sha256/4f/1fa8a498c16fdcd24d5d9c909e2a69e8c2d14574154c3ca8d76a3f6ede639c" "OmniBOR SHA256 Document file contents 2" "^gitoid:blob:sha256 {blob 89049366024b9ff5aaf9efd137248849f4a611c4b4049e063c3ef5326bf437ca bom 6d8d98ed995192169a6522b0d4f03948c9991de507e4fc14b012f07be2581752}$"
+
+unset env(OMNIBOR_DIR)
+
+run_ld_link_tests [list \
     [list \
-	"OmniBOR calculation with OMNIBOR_DIR and --omnibor=dir" \
-	"-r --omnibor=dir" \
+	"OmniBOR calculation with --omnibor=dir" \
+	"-r --omnibor=option_dir" \
 	"" \
 	"" \
 	{dummy.s} \
@@ -105,42 +121,10 @@ run_ld_link_tests [list \
     ] \
 ]
 
-check_omnibor_document_contents_sha1 "env_dir/objects/gitoid_blob_sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "OmniBOR SHA1 Document file contents 1"
+# The OmniBOR Document files are different in the following case compared to the previous two
+# cases because now the OmniBOR calculation is not enabled in GNU assembler, since the GNU ld
+# OmniBOR option is used and the OMNIBOR_DIR environment variable is not set.
 
-check_omnibor_document_contents_sha256 "env_dir/objects/gitoid_blob_sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "OmniBOR SHA256 Document file contents 1"
+check_omnibor_document_contents_sha1 "option_dir/objects/gitoid_blob_sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "OmniBOR SHA1 Document file contents 3" "^gitoid:blob:sha1 {blob d138dc90198e9370085e65f8bfec82d81e245c56}$"
 
-unset env(OMNIBOR_DIR)
-
-run_ld_link_tests [list \
-    [list \
-	"OmniBOR calculation with --omnibor=dir" \
-	"-r --omnibor=dir" \
-	"" \
-	"" \
-	{dummy.s} \
-	{{readelf {--notes} omnibor.rd}} \
-	"omnibor4.o" \
-    ] \
-]
-
-check_omnibor_document_contents_sha1 "dir/objects/gitoid_blob_sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "OmniBOR SHA1 Document file contents 2"
-
-check_omnibor_document_contents_sha256 "dir/objects/gitoid_blob_sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "OmniBOR SHA256 Document file contents 2"
-
-run_ld_link_tests [list \
-    [list \
-	"OmniBOR calculation with --omnibor" \
-	"-r --omnibor" \
-	"" \
-	"" \
-	{dummy.s} \
-	{{readelf {--notes} omnibor.rd}} \
-	"omnibor5.o" \
-    ] \
-]
-
-# OmniBOR information is stored in tmpdir because the resulting executable is stored there
-check_omnibor_document_contents_sha1 "tmpdir/objects/gitoid_blob_sha1/05/33256bbdc60cd8d714d4f54d0d81c0964b7db6" "OmniBOR SHA1 Document file contents 3"
-
-# OmniBOR information is stored in tmpdir because the resulting executable is stored there
-check_omnibor_document_contents_sha256 "tmpdir/objects/gitoid_blob_sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "OmniBOR SHA256 Document file contents 3"
+check_omnibor_document_contents_sha256 "option_dir/objects/gitoid_blob_sha256/40/c1311813b76afac737d6223b4e632c4054019f7fcf89ccb0d8823f8d4fe239" "OmniBOR SHA256 Document file contents 3" "^gitoid:blob:sha256 {blob c3d71ad569a20d9c13a2fadcfce2c254d1a61151edd5e9958d5fdc238d431693}$"

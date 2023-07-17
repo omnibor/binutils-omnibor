@@ -149,7 +149,7 @@ static const struct ld_option ld_options[] =
   { {"gpsize", required_argument, NULL, 'G'},
     'G', N_("SIZE"), N_("Small data size (if no size, same as --shared)"),
     TWO_DASHES },
-  { {"omnibor", optional_argument, NULL, OPTION_OMNIBOR},
+  { {"omnibor", required_argument, NULL, OPTION_OMNIBOR},
     '\0', N_("DIRECTORY"), N_("Calculate OmniBOR information"), TWO_DASHES },
   { {"soname", required_argument, NULL, OPTION_SONAME},
     'h', N_("FILENAME"), N_("Set internal name of shared library"), ONE_DASH },
@@ -1754,10 +1754,10 @@ parse_args (unsigned argc, char **argv)
 		(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
 	  ldelf_emit_note_omnibor_sha256 =
 		(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
-	  if (optarg != NULL)
+	  if (optarg != NULL && strlen (optarg) > 0)
 	    config.omnibor_dir = optarg;
 	  else
-	    config.omnibor_dir = "";
+	    einfo (_("%P: expected argument to --omnibor= but none provided\n"));
 	  break;
 	}
     }

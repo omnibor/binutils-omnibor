@@ -1727,7 +1727,7 @@ write_omnibor (bfd *abfd)
   if (bfd_is_abs_section (asec->output_section))
     {
       einfo (_("%P: warning: .note.omnibor section discarded,"
-	       " --omnibor ignored\n"));
+	       " --omnibor= ignored\n"));
       return true;
     }
   i_shdr = &elf_section_data (asec->output_section)->this_hdr;
@@ -1818,7 +1818,7 @@ ldelf_setup_omnibor (bfd *ibfd)
     }
 
   einfo (_("%P: warning: cannot create .note.omnibor section,"
-	   " --omnibor ignored\n"));
+	   " --omnibor= ignored\n"));
   return false;
 }
 

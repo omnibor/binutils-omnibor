@@ -258,20 +258,6 @@ omnibor_find_char_from_pos (unsigned start_pos, char c, const char *str)
   return -1;
 }
 
-/* Return the position of the last occurrence of char c in the entire
-   str string.  */
-
-static int
-omnibor_find_last_of (char c, const char *str)
-{
-  int ret = -1;
-  for (unsigned ix = 0; ix < strlen (str); ix++)
-    if (str[ix] == c)
-      ret = ix;
-
-  return ret;
-}
-
 /* Append the string str2 to the end of the string str1.  */
 
 void
@@ -323,29 +309,6 @@ omnibor_set_contents (char **str1, const char *str2, unsigned long len)
 	(*str1, sizeof (char) * (len + 1));
   memcpy (*str1, str2, len);
   (*str1)[len] = '\0';
-}
-
-/* Get the path of the directory where the resulting executable will be
-   stored, because the OmniBOR information should be stored there as well,
-   in the default case (when OMNIBOR_DIR environment variable is not set
-   and --omnibor=<arg> is not used, but --omnibor is used instead).  */
-
-static void
-omnibor_get_destdir (char **res)
-{
-  char *temp = (char *) xcalloc (1, sizeof (char));
-
-  int i = -1;
-
-  if ((i = omnibor_find_last_of ('/', output_filename)) != -1)
-    {
-      omnibor_substr (&temp, 0, i, output_filename);
-      omnibor_set_contents (res, temp, strlen (temp));
-    }
-  else
-    omnibor_set_contents (res, "", 0);
-
-  free (temp);
 }
 
 /* Open all the directories from the path specified in the res_dir
@@ -903,12 +866,11 @@ omnibor_is_note_section_present (const char *name, unsigned hash_func_type)
 }
 
 /* Store the OmniBOR information in the specified directory whose path is
-   written in the result_dir parameter.  If result_dir is NULL or an empty
-   string, the OmniBOR information is stored in the current working directory.
-   The hash_size parameter has to be either GITOID_LENGTH_SHA1 (for the SHA1
-   OmniBOR information) or GITOID_LENGTH_SHA256 (for the SHA256 OmniBOR
-   information).  If any error occurs during the creation of the OmniBOR
-   Document file, name parameter is set to point to an empty string.  */
+   written in the result_dir parameter.  The hash_size parameter has to be
+   either GITOID_LENGTH_SHA1 (for the SHA1 OmniBOR information) or
+   GITOID_LENGTH_SHA256 (for the SHA256 OmniBOR information).  If any error
+   occurs during the creation of the OmniBOR Document file, name parameter
+   is set to point to an empty string.  */
 
 static void
 create_omnibor_document_file (char **name, const char *result_dir,
@@ -965,12 +927,21 @@ create_omnibor_document_file (char **name, const char *result_dir,
               mkdirat (dfd1, "objects", S_IRWXU);
             }
         }
+      /* This point should not be reachable.  */
       else
-        mkdir ("objects", S_IRWXU);
+	{
+	  free (path_objects);
+	  omnibor_set_contents (name, "", 0);
+	  return;
+	}
     }
-  /* Put the OmniBOR Document file in the current working directory.  */
+  /* This point should not be reachable.  */
   else
-    mkdir ("objects", S_IRWXU);
+    {
+      free (path_objects);
+      omnibor_set_contents (name, "", 0);
+      return;
+    }
 
   DIR *dir_two = opendir (path_objects);
   if (dir_two == NULL)
@@ -1389,13 +1360,14 @@ create_sha1_symlink (const char *gitoid_sha1, char *res_dir)
       omnibor_append_to_string (&path_adg, "/.adg", strlen (path_adg),
 				strlen ("/.adg"));
     }
+  /* This point should not be reachable.  */
   else
     {
-      mkdir (".adg", S_IRWXU);
-      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
-				strlen (res_dir));
-      omnibor_append_to_string (&path_adg, ".adg", strlen (path_adg),
-				strlen (".adg"));
+      free (path_adg);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha1);
+      return;
     }
 
   dir_adg = opendir (path_adg);
@@ -1476,13 +1448,14 @@ create_sha256_symlink (const char *gitoid_sha256, char *res_dir)
       omnibor_append_to_string (&path_adg, "/.adg", strlen (path_adg),
 				strlen ("/.adg"));
     }
+  /* This point should not be reachable.  */
   else
     {
-      mkdir (".adg", S_IRWXU);
-      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
-				strlen (res_dir));
-      omnibor_append_to_string (&path_adg, ".adg", strlen (path_adg),
-				strlen (".adg"));
+      free (path_adg);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha256);
+      return;
     }
 
   dir_adg = opendir (path_adg);
@@ -1838,36 +1811,22 @@ main (int argc, char **argv)
   /* If the calculation of the OmniBOR information is enabled, do it here.
      Also, determine the directory to store the OmniBOR files in this order of
      precedence.
-	1. If OMNIBOR_DIR environment variable is set, use this location.
-	2. Use the directory name passed with --omnibor option.
-	3. Default is to write the OmniBOR files in the same directory as the
-	   resulting executable.  */
+	1. Use the directory name passed with --omnibor= option.
+	2. Use the location set in OMNIBOR_DIR environment variable.  */
   if (config.omnibor_dir != NULL ||
      (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
     {
       omnibor_dir = (char *) xcalloc (1, sizeof (char));
 
-      const char *env_omnibor = getenv ("OMNIBOR_DIR");
-      if (env_omnibor != NULL)
-        omnibor_set_contents (&omnibor_dir, env_omnibor, strlen (env_omnibor));
+      if (config.omnibor_dir != NULL && strlen (config.omnibor_dir) > 0)
+            omnibor_set_contents (&omnibor_dir, config.omnibor_dir,
+				  strlen (config.omnibor_dir));
 
       if (strlen (omnibor_dir) == 0)
         {
-          if (strlen (config.omnibor_dir) > 0)
-            omnibor_set_contents (&omnibor_dir, config.omnibor_dir,
-				  strlen (config.omnibor_dir));
-          else
-            {
-	      char *res = (char *) xcalloc (1, sizeof (char));
-
-              omnibor_get_destdir (&res);
-              if (strlen (res) > 0)
-                omnibor_set_contents (&omnibor_dir, res, strlen (res));
-              else
-                omnibor_set_contents (&omnibor_dir, "", 0);
-
-	      free (res);
-            }
+	  const char *env_omnibor = getenv ("OMNIBOR_DIR");
+	  if (env_omnibor != NULL)
+	    omnibor_set_contents (&omnibor_dir, env_omnibor, strlen (env_omnibor));
         }
 
       char *gitoid_sha1 = (char *) xcalloc (1, sizeof (char));
@@ -1877,10 +1836,11 @@ main (int argc, char **argv)
           write_sha1_omnibor (&gitoid_sha1, omnibor_dir);
           write_sha256_omnibor (&gitoid_sha256, omnibor_dir);
         }
+      /* This else should be unreachable.  */
       else
         {
-          write_sha1_omnibor (&gitoid_sha1, NULL);
-          write_sha256_omnibor (&gitoid_sha256, NULL);
+          omnibor_set_contents (&gitoid_sha1, "", 0);
+          omnibor_set_contents (&gitoid_sha256, "", 0);
         }
 
       omnibor_clear_deps ();
