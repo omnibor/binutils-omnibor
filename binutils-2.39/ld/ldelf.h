@@ -23,10 +23,6 @@ extern char *ldelf_emit_note_omnibor_sha1;
 extern char *ldelf_emit_note_omnibor_sha256;
 extern const char *ldelf_emit_note_fdo_package_metadata;
 
-extern unsigned char get_hex (unsigned char);
-extern void convert_ascii_decimal_to_ascii_hex (char *, char *,
-						unsigned long);
-
 extern void ldelf_after_parse (void);
 extern bool ldelf_load_symbols (lang_input_statement_type *);
 extern void ldelf_before_plugin_all_symbols_read (int, int, int, int,

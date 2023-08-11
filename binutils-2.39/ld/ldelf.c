@@ -1238,7 +1238,7 @@ ldelf_before_plugin_all_symbols_read (int use_libpath, int native,
    character argument has a decimal value which cannot be represented with a
    single hexadecimal character, the same character is returned.  */
 
-unsigned char
+static unsigned char
 get_hex (unsigned char c)
 {
   if (c >= 10 && c <= 15)
@@ -1269,7 +1269,7 @@ get_hex (unsigned char c)
 
      Output array: 6 f 0 d a a 9 6     (4 pairs of two hex characters)       */
 
-void
+static void
 convert_ascii_decimal_to_ascii_hex (char *in_array, char *out_array,
 			            unsigned long in_array_len)
 {
@@ -1774,13 +1774,10 @@ write_omnibor (bfd *abfd)
   position = i_shdr->sh_offset + asec->output_offset;
   size = asec->size;
 
-  if (getenv ("OMNIBOR_NO_EMBED") == NULL)
-    {
-      free (ldelf_emit_note_omnibor_sha1);
-      free (ldelf_emit_note_omnibor_sha256);
-      ldelf_emit_note_omnibor_sha1 = NULL;
-      ldelf_emit_note_omnibor_sha256 = NULL;
-    }
+  free (ldelf_emit_note_omnibor_sha1);
+  free (ldelf_emit_note_omnibor_sha256);
+  ldelf_emit_note_omnibor_sha1 = NULL;
+  ldelf_emit_note_omnibor_sha256 = NULL;
   return (bfd_seek (abfd, position, SEEK_SET) == 0
 	  && bfd_bwrite (contents, size, abfd) == size);
 }

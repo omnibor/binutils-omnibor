@@ -65,10 +65,4 @@ extern void track_dependency_files (const char *);
 
 extern void omnibor_add_to_note_sections (const char *, char *, char *,
 					  unsigned long, unsigned long);
-extern void omnibor_append_to_string (char **, const char *,
-				      unsigned long, unsigned long);
-extern void calculate_sha1_omnibor (FILE *, unsigned char[]);
-extern void calculate_sha1_omnibor_with_contents (char *, unsigned char[]);
-extern void calculate_sha256_omnibor (FILE *, unsigned char[]);
-extern void calculate_sha256_omnibor_with_contents (char *, unsigned char[]);
 #endif

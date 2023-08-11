@@ -501,8 +501,6 @@ void omnibor_clear_deps (void);
 void omnibor_clear_note_sections (void);
 void write_sha1_omnibor (char **, const char *);
 void write_sha256_omnibor (char **, const char *);
-void create_sha1_symlink (const char *, char *);
-void create_sha256_symlink (const char *, char *);
 
 /* More OmniBOR-related function declarations.  Defined in write.c.  */
 void write_omnibor (const char *, const char *);

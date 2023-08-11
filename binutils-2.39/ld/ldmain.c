@@ -65,8 +65,6 @@
 #define TARGET_SYSTEM_ROOT ""
 #endif
 
-static char *omnibor_dir;
-
 /* EXPORTS */
 
 FILE *saved_script_handle = NULL;
@@ -260,7 +258,7 @@ omnibor_find_char_from_pos (unsigned start_pos, char c, const char *str)
 
 /* Append the string str2 to the end of the string str1.  */
 
-void
+static void
 omnibor_append_to_string (char **str1, const char *str2,
 			 unsigned long len1, unsigned long len2)
 {
@@ -475,7 +473,7 @@ close_all_directories_in_path (void)
 
 /* Calculate the SHA1 gitoid using the contents of the given file.  */
 
-void
+static void
 calculate_sha1_omnibor (FILE *dep_file, unsigned char resblock[])
 {
   fseek (dep_file, 0L, SEEK_END);
@@ -513,7 +511,7 @@ calculate_sha1_omnibor (FILE *dep_file, unsigned char resblock[])
 
 /* Calculate the SHA1 gitoid using the given contents.  */
 
-void
+static void
 calculate_sha1_omnibor_with_contents (char *contents,
 				      unsigned char resblock[])
 {
@@ -546,7 +544,7 @@ calculate_sha1_omnibor_with_contents (char *contents,
 
 /* Calculate the SHA256 gitoid using the contents of the given file.  */
 
-void
+static void
 calculate_sha256_omnibor (FILE *dep_file, unsigned char resblock[])
 {
   fseek (dep_file, 0L, SEEK_END);
@@ -584,7 +582,7 @@ calculate_sha256_omnibor (FILE *dep_file, unsigned char resblock[])
 
 /* Calculate the SHA256 gitoid using the given contents.  */
 
-void
+static void
 calculate_sha256_omnibor_with_contents (char *contents,
 					unsigned char resblock[])
 {
@@ -1306,182 +1304,6 @@ write_sha256_omnibor (char **name, const char *result_dir)
   free (new_file_contents);
 }
 
-static void
-create_sha1_symlink (const char *gitoid_sha1, char *res_dir)
-{
-  static const char *const lut = "0123456789abcdef";
-  char *gitoid_exec_sha1 = (char *) xcalloc (1, sizeof (char));
-  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
-  high_ch[1] = '\0';
-  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
-  low_ch[1] = '\0';
-
-  FILE *file_executable = fopen (output_filename, "rb");
-  if (file_executable == NULL)
-    {
-      free (low_ch);
-      free (high_ch);
-      free (gitoid_exec_sha1);
-      return;
-    }
-  unsigned char resblock[GITOID_LENGTH_SHA1];
-
-  calculate_sha1_omnibor (file_executable, resblock);
-
-  fclose (file_executable);
-
-  for (unsigned i = 0; i != GITOID_LENGTH_SHA1; i++)
-    {
-      high_ch[0] = lut[resblock[i] >> 4];
-      low_ch[0] = lut[resblock[i] & 15];
-      omnibor_append_to_string (&gitoid_exec_sha1, high_ch, i * 2, 2);
-      omnibor_append_to_string (&gitoid_exec_sha1, low_ch, i * 2 + 1, 2);
-    }
-
-  char *path_adg = (char *) xcalloc (1, sizeof (char));
-  DIR *dir = NULL, *dir_adg = NULL;
-
-  if (strcmp ("", res_dir) != 0)
-    {
-      dir = opendir (res_dir);
-      if (dir == NULL)
-        {
-          free (path_adg);
-          free (low_ch);
-          free (high_ch);
-          free (gitoid_exec_sha1);
-          return;
-        }
-
-      int dfd = dirfd (dir);
-      mkdirat (dfd, ".adg", S_IRWXU);
-      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
-				strlen (res_dir));
-      omnibor_append_to_string (&path_adg, "/.adg", strlen (path_adg),
-				strlen ("/.adg"));
-    }
-  /* This point should not be reachable.  */
-  else
-    {
-      free (path_adg);
-      free (low_ch);
-      free (high_ch);
-      free (gitoid_exec_sha1);
-      return;
-    }
-
-  dir_adg = opendir (path_adg);
-  if (dir_adg == NULL)
-    {
-      if (strcmp ("", res_dir) != 0)
-        closedir (dir);
-      free (path_adg);
-      free (low_ch);
-      free (high_ch);
-      free (gitoid_exec_sha1);
-      return;
-    }
-
-  int dfd_adg = dirfd (dir_adg);
-  symlinkat (gitoid_sha1, dfd_adg, gitoid_exec_sha1);
-
-  closedir (dir_adg);
-  if (strcmp ("", res_dir) != 0)
-    closedir (dir);
-  free (path_adg);
-  free (low_ch);
-  free (high_ch);
-  free (gitoid_exec_sha1);
-}
-
-static void
-create_sha256_symlink (const char *gitoid_sha256, char *res_dir)
-{
-  static const char *const lut = "0123456789abcdef";
-  char *gitoid_exec_sha256 = (char *) xcalloc (1, sizeof (char));
-  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
-  high_ch[1] = '\0';
-  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
-  low_ch[1] = '\0';
-
-  FILE *file_executable = fopen (output_filename, "rb");
-  if (file_executable == NULL)
-    {
-      free (low_ch);
-      free (high_ch);
-      free (gitoid_exec_sha256);
-      return;
-    }
-  unsigned char resblock[GITOID_LENGTH_SHA256];
-
-  calculate_sha256_omnibor (file_executable, resblock);
-
-  fclose (file_executable);
-
-  for (unsigned i = 0; i != GITOID_LENGTH_SHA256; i++)
-    {
-      high_ch[0] = lut[resblock[i] >> 4];
-      low_ch[0] = lut[resblock[i] & 15];
-      omnibor_append_to_string (&gitoid_exec_sha256, high_ch, i * 2, 2);
-      omnibor_append_to_string (&gitoid_exec_sha256, low_ch, i * 2 + 1, 2);
-    }
-
-  char *path_adg = (char *) xcalloc (1, sizeof (char));
-  DIR *dir = NULL, *dir_adg = NULL;
-
-  if (strcmp ("", res_dir) != 0)
-    {
-      dir = opendir (res_dir);
-      if (dir == NULL)
-        {
-          free (path_adg);
-          free (low_ch);
-          free (high_ch);
-          free (gitoid_exec_sha256);
-          return;
-        }
-
-      int dfd = dirfd (dir);
-      mkdirat (dfd, ".adg", S_IRWXU);
-      omnibor_append_to_string (&path_adg, res_dir, strlen (path_adg),
-				strlen (res_dir));
-      omnibor_append_to_string (&path_adg, "/.adg", strlen (path_adg),
-				strlen ("/.adg"));
-    }
-  /* This point should not be reachable.  */
-  else
-    {
-      free (path_adg);
-      free (low_ch);
-      free (high_ch);
-      free (gitoid_exec_sha256);
-      return;
-    }
-
-  dir_adg = opendir (path_adg);
-  if (dir_adg == NULL)
-    {
-      if (strcmp ("", res_dir) != 0)
-        closedir (dir);
-      free (path_adg);
-      free (low_ch);
-      free (high_ch);
-      free (gitoid_exec_sha256);
-      return;
-    }
-
-  int dfd_adg = dirfd (dir_adg);
-  symlinkat (gitoid_sha256, dfd_adg, gitoid_exec_sha256);
-
-  closedir (dir_adg);
-  if (strcmp ("", res_dir) != 0)
-    closedir (dir);
-  free (path_adg);
-  free (low_ch);
-  free (high_ch);
-  free (gitoid_exec_sha256);
-}
-
 
 static void
 ld_cleanup (void)
@@ -1816,7 +1638,7 @@ main (int argc, char **argv)
   if (config.omnibor_dir != NULL ||
      (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
     {
-      omnibor_dir = (char *) xcalloc (1, sizeof (char));
+      char *omnibor_dir = (char *) xcalloc (1, sizeof (char));
 
       if (config.omnibor_dir != NULL && strlen (config.omnibor_dir) > 0)
             omnibor_set_contents (&omnibor_dir, config.omnibor_dir,
@@ -1875,8 +1697,7 @@ main (int argc, char **argv)
 
       free (gitoid_sha256);
       free (gitoid_sha1);
-      if (getenv ("OMNIBOR_NO_EMBED") == NULL)
-	free (omnibor_dir);
+      free (omnibor_dir);
     }
 
   /* Even if we're producing relocatable output, some non-fatal errors should
@@ -1954,26 +1775,6 @@ main (int argc, char **argv)
 	       program_name, run_time / 1000000, run_time % 1000000);
       fflush (stderr);
     }
-
-  /* Symlink (gitoid_of_executable -> gitoid_of_omnibor_doc) creation for
-     both SHA1 and SHA256 OmniBOR Document files.  Do it only in the NO_EMBED
-     case (when OMNIBOR_NO_EMBED environment variable is set).  */
-  if (getenv ("OMNIBOR_NO_EMBED") != NULL)
-    if (config.omnibor_dir != NULL ||
-       (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
-      {
-	create_sha1_symlink (ldelf_emit_note_omnibor_sha1,
-			     omnibor_dir);
-
-	create_sha256_symlink (ldelf_emit_note_omnibor_sha256,
-			       omnibor_dir);
-
-	free (ldelf_emit_note_omnibor_sha1);
-	free (ldelf_emit_note_omnibor_sha256);
-	ldelf_emit_note_omnibor_sha1 = NULL;
-	ldelf_emit_note_omnibor_sha256 = NULL;
-	free (omnibor_dir);
-      }
 
   /* Prevent ld_cleanup from doing anything, after a successful link.  */
   output_filename = NULL;

@@ -1207,23 +1207,6 @@ close_output_file (void)
   output_file_close (out_file_name);
   if (!keep_it)
     unlink_if_ordinary (out_file_name);
-
-  /* Symlink (gitoid_of_object_file -> gitoid_of_omnibor_doc) creation for
-     both SHA1 and SHA256 OmniBOR Document files.  Do it only in the NO_EMBED
-     case (when OMNIBOR_NO_EMBED environment variable is set).  */
-  if (getenv ("OMNIBOR_NO_EMBED") != NULL)
-    if ((omnibor_dir != NULL ||
-	(getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0)) &&
-	!(omnibor_input_file_is_temporary && input_omnibor_section != NULL))
-      {
-	create_sha1_symlink (gitoid_sha1,
-			     omnibor_dir_final);
-	create_sha256_symlink (gitoid_sha256,
-			       omnibor_dir_final);
-	free (gitoid_sha256);
-	free (gitoid_sha1);
-	free (omnibor_dir_final);
-      }
 }
 
 /* The interface between the macro code and gas expression handling.  */
@@ -1610,12 +1593,9 @@ main (int argc, char ** argv)
       omnibor_clear_deps ();
       omnibor_clear_note_sections ();
 
-      if (getenv ("OMNIBOR_NO_EMBED") == NULL)
-	{
-	  free (gitoid_sha256);
-          free (gitoid_sha1);
-          free (omnibor_dir_final);
-	}
+      free (gitoid_sha256);
+      free (gitoid_sha1);
+      free (omnibor_dir_final);
     }
 
   xexit (EXIT_SUCCESS);
