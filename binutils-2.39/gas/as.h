@@ -495,12 +495,16 @@ segT   subseg_get (const char *, int);
 void omnibor_start_dependencies (void);
 bool is_omnibor_enabled (void);
 void omnibor_set_contents (char **, const char *, unsigned long);
+void omnibor_substr (char **, unsigned, unsigned, const char *);
+int omnibor_find_char_from_pos (unsigned, char, const char *);
 void omnibor_add_to_note_sections (const char *, char *, char *,
 				   unsigned long, unsigned long);
 void omnibor_clear_deps (void);
 void omnibor_clear_note_sections (void);
 void write_sha1_omnibor (char **, const char *);
 void write_sha256_omnibor (char **, const char *);
+void omnibor_create_file_no_embed_sha1 (const char *, char *);
+void omnibor_create_file_no_embed_sha256 (const char *, char *);
 
 /* More OmniBOR-related function declarations.  Defined in write.c.  */
 void write_omnibor (const char *, const char *);
@@ -509,6 +513,8 @@ void write_omnibor (const char *, const char *);
 extern bool omnibor_input_file_is_temporary;
 extern const char *omnibor_dir;
 extern const char *omnibor_input_filename;
+extern char *omnibor_no_embed_gitoid_sha1;
+extern char *omnibor_no_embed_gitoid_sha256;
 
 char *remap_debug_filename (const char *);
 void add_debug_prefix_map (const char *);

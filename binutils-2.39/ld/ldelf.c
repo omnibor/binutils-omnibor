@@ -1409,16 +1409,17 @@ ldelf_after_open (int use_libpath, int native, int is_linux, int is_freebsd,
 	  ldelf_emit_note_gnu_build_id = NULL;
 	}
 
-      if (abfd == NULL
-	  || (ldelf_emit_note_omnibor_sha1 != NULL
-	      && ldelf_emit_note_omnibor_sha256 != NULL
-	      && !ldelf_setup_omnibor (abfd)))
-	{
-	  free (ldelf_emit_note_omnibor_sha1);
-	  free (ldelf_emit_note_omnibor_sha256);
-	  ldelf_emit_note_omnibor_sha1 = NULL;
-	  ldelf_emit_note_omnibor_sha256 = NULL;
-	}
+      if (getenv ("OMNIBOR_NO_EMBED") == NULL)
+	if (abfd == NULL
+	    || (ldelf_emit_note_omnibor_sha1 != NULL
+		&& ldelf_emit_note_omnibor_sha256 != NULL
+		&& !ldelf_setup_omnibor (abfd)))
+	  {
+	    free (ldelf_emit_note_omnibor_sha1);
+	    free (ldelf_emit_note_omnibor_sha256);
+	    ldelf_emit_note_omnibor_sha1 = NULL;
+	    ldelf_emit_note_omnibor_sha256 = NULL;
+	  }
 
       if (abfd == NULL
 	  || (ldelf_emit_note_fdo_package_metadata != NULL

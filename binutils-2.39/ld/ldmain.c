@@ -65,6 +65,8 @@
 #define TARGET_SYSTEM_ROOT ""
 #endif
 
+static char *omnibor_dir;
+
 /* EXPORTS */
 
 FILE *saved_script_handle = NULL;
@@ -1304,6 +1306,266 @@ write_sha256_omnibor (char **name, const char *result_dir)
   free (new_file_contents);
 }
 
+/* Create the file which connects the SHA1 OmniBOR Document file for the
+   output file and the SHA1 id of that output file.  */
+
+static void
+omnibor_create_file_no_embed_sha1 (const char *gitoid_sha1, char *res_dir)
+{
+  static const char *const lut = "0123456789abcdef";
+  char *gitoid_exec_sha1 = (char *) xcalloc (1, sizeof (char));
+  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
+  high_ch[1] = '\0';
+  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
+  low_ch[1] = '\0';
+
+  FILE *file_executable = fopen (output_filename, "rb");
+  if (file_executable == NULL)
+    {
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha1);
+      return;
+    }
+  unsigned char resblock[GITOID_LENGTH_SHA1];
+
+  calculate_sha1_omnibor (file_executable, resblock);
+
+  fclose (file_executable);
+
+  for (unsigned i = 0; i != GITOID_LENGTH_SHA1; i++)
+    {
+      high_ch[0] = lut[resblock[i] >> 4];
+      low_ch[0] = lut[resblock[i] & 15];
+      omnibor_append_to_string (&gitoid_exec_sha1, high_ch, i * 2, 2);
+      omnibor_append_to_string (&gitoid_exec_sha1, low_ch, i * 2 + 1, 2);
+    }
+
+  char *path_mapping = (char *) xcalloc (1, sizeof (char));
+  DIR *dir = NULL, *dir_mapping = NULL;
+
+  if (strcmp ("", res_dir) != 0)
+    {
+      dir = opendir (res_dir);
+      if (dir == NULL)
+	{
+	  free (path_mapping);
+	  free (low_ch);
+	  free (high_ch);
+	  free (gitoid_exec_sha1);
+	  return;
+	}
+
+      int dfd = dirfd (dir);
+      mkdirat (dfd, "mapping", S_IRWXU);
+      omnibor_append_to_string (&path_mapping, res_dir, strlen (path_mapping),
+				strlen (res_dir));
+      omnibor_append_to_string (&path_mapping, "/mapping", strlen (path_mapping),
+				strlen ("/mapping"));
+    }
+  /* This point should not be reachable.  */
+  else
+    {
+      free (path_mapping);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha1);
+      return;
+    }
+
+  dir_mapping = opendir (path_mapping);
+  if (dir_mapping == NULL)
+    {
+      if (strcmp ("", res_dir) != 0)
+	closedir (dir);
+      free (path_mapping);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha1);
+      return;
+    }
+
+  int dfd_mapping = dirfd (dir_mapping);
+  mkdirat (dfd_mapping, "gitoid_blob_sha1", S_IRWXU);
+
+  char *path_sha = (char *) xcalloc (1, sizeof (char));
+  omnibor_append_to_string (&path_sha, path_mapping, strlen (path_sha),
+			    strlen (path_mapping));
+  omnibor_append_to_string (&path_sha, "/gitoid_blob_sha1",
+			    strlen (path_sha),
+			    strlen ("/gitoid_blob_sha1"));
+  DIR *dir_sha = opendir (path_sha);
+  if (dir_sha == NULL)
+    {
+      closedir (dir_mapping);
+      if (strcmp ("", res_dir) != 0)
+	closedir (dir);
+      free (path_sha);
+      free (path_mapping);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha1);
+      return;
+    }
+
+  char *new_file_path = (char *) xcalloc (1, sizeof (char));
+  omnibor_append_to_string (&new_file_path, path_sha, strlen (new_file_path),
+			    strlen (path_sha));
+  omnibor_append_to_string (&new_file_path, "/", strlen (new_file_path),
+			    strlen ("/"));
+  omnibor_append_to_string (&new_file_path, gitoid_exec_sha1, strlen (new_file_path),
+			    2 * GITOID_LENGTH_SHA1);
+
+  FILE *new_file = fopen (new_file_path, "w");
+  if (new_file != NULL)
+    {
+      fwrite (gitoid_sha1, sizeof (char), 2 * GITOID_LENGTH_SHA1, new_file);
+      fwrite ("\n", sizeof (char), 1, new_file);
+      fclose (new_file);
+    }
+
+  closedir (dir_sha);
+  closedir (dir_mapping);
+  if (strcmp ("", res_dir) != 0)
+    closedir (dir);
+  free (new_file_path);
+  free (path_sha);
+  free (path_mapping);
+  free (low_ch);
+  free (high_ch);
+  free (gitoid_exec_sha1);
+}
+
+/* Create the file which connects the SHA256 OmniBOR Document file for the
+   output file and the SHA256 id of that output file.  */
+
+static void
+omnibor_create_file_no_embed_sha256 (const char *gitoid_sha256, char *res_dir)
+{
+  static const char *const lut = "0123456789abcdef";
+  char *gitoid_exec_sha256 = (char *) xcalloc (1, sizeof (char));
+  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
+  high_ch[1] = '\0';
+  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
+  low_ch[1] = '\0';
+
+  FILE *file_executable = fopen (output_filename, "rb");
+  if (file_executable == NULL)
+    {
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha256);
+      return;
+    }
+  unsigned char resblock[GITOID_LENGTH_SHA256];
+
+  calculate_sha256_omnibor (file_executable, resblock);
+
+  fclose (file_executable);
+
+  for (unsigned i = 0; i != GITOID_LENGTH_SHA256; i++)
+    {
+      high_ch[0] = lut[resblock[i] >> 4];
+      low_ch[0] = lut[resblock[i] & 15];
+      omnibor_append_to_string (&gitoid_exec_sha256, high_ch, i * 2, 2);
+      omnibor_append_to_string (&gitoid_exec_sha256, low_ch, i * 2 + 1, 2);
+    }
+
+  char *path_mapping = (char *) xcalloc (1, sizeof (char));
+  DIR *dir = NULL, *dir_mapping = NULL;
+
+  if (strcmp ("", res_dir) != 0)
+    {
+      dir = opendir (res_dir);
+      if (dir == NULL)
+	{
+	  free (path_mapping);
+	  free (low_ch);
+	  free (high_ch);
+	  free (gitoid_exec_sha256);
+	  return;
+	}
+
+      int dfd = dirfd (dir);
+      mkdirat (dfd, "mapping", S_IRWXU);
+      omnibor_append_to_string (&path_mapping, res_dir, strlen (path_mapping),
+				strlen (res_dir));
+      omnibor_append_to_string (&path_mapping, "/mapping", strlen (path_mapping),
+				strlen ("/mapping"));
+    }
+  /* This point should not be reachable.  */
+  else
+    {
+      free (path_mapping);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha256);
+      return;
+    }
+
+  dir_mapping = opendir (path_mapping);
+  if (dir_mapping == NULL)
+    {
+      if (strcmp ("", res_dir) != 0)
+	closedir (dir);
+      free (path_mapping);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha256);
+      return;
+    }
+
+  int dfd_mapping = dirfd (dir_mapping);
+  mkdirat (dfd_mapping, "gitoid_blob_sha256", S_IRWXU);
+
+  char *path_sha = (char *) xcalloc (1, sizeof (char));
+  omnibor_append_to_string (&path_sha, path_mapping, strlen (path_sha),
+			    strlen (path_mapping));
+  omnibor_append_to_string (&path_sha, "/gitoid_blob_sha256",
+			    strlen (path_sha),
+			    strlen ("/gitoid_blob_sha256"));
+  DIR *dir_sha = opendir (path_sha);
+  if (dir_sha == NULL)
+    {
+      closedir (dir_mapping);
+      if (strcmp ("", res_dir) != 0)
+	closedir (dir);
+      free (path_sha);
+      free (path_mapping);
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_exec_sha256);
+      return;
+    }
+
+  char *new_file_path = (char *) xcalloc (1, sizeof (char));
+  omnibor_append_to_string (&new_file_path, path_sha, strlen (new_file_path),
+			    strlen (path_sha));
+  omnibor_append_to_string (&new_file_path, "/", strlen (new_file_path),
+			    strlen ("/"));
+  omnibor_append_to_string (&new_file_path, gitoid_exec_sha256, strlen (new_file_path),
+			    2 * GITOID_LENGTH_SHA256);
+
+  FILE *new_file = fopen (new_file_path, "w");
+  if (new_file != NULL)
+    {
+      fwrite (gitoid_sha256, sizeof (char), 2 * GITOID_LENGTH_SHA256, new_file);
+      fwrite ("\n", sizeof (char), 1, new_file);
+      fclose (new_file);
+    }
+
+  closedir (dir_sha);
+  closedir (dir_mapping);
+  if (strcmp ("", res_dir) != 0)
+    closedir (dir);
+  free (new_file_path);
+  free (path_sha);
+  free (path_mapping);
+  free (low_ch);
+  free (high_ch);
+  free (gitoid_exec_sha256);
+}
+
 
 static void
 ld_cleanup (void)
@@ -1638,7 +1900,7 @@ main (int argc, char **argv)
   if (config.omnibor_dir != NULL ||
      (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
     {
-      char *omnibor_dir = (char *) xcalloc (1, sizeof (char));
+      omnibor_dir = (char *) xcalloc (1, sizeof (char));
 
       if (config.omnibor_dir != NULL && strlen (config.omnibor_dir) > 0)
             omnibor_set_contents (&omnibor_dir, config.omnibor_dir,
@@ -1697,7 +1959,8 @@ main (int argc, char **argv)
 
       free (gitoid_sha256);
       free (gitoid_sha1);
-      free (omnibor_dir);
+      if (getenv ("OMNIBOR_NO_EMBED") == NULL)
+	free (omnibor_dir);
     }
 
   /* Even if we're producing relocatable output, some non-fatal errors should
@@ -1775,6 +2038,26 @@ main (int argc, char **argv)
 	       program_name, run_time / 1000000, run_time % 1000000);
       fflush (stderr);
     }
+
+  /* Create files which connect the output file to its OmniBOR Document
+     files.  Do it only in the NO_EMBED case (when OMNIBOR_NO_EMBED
+     environment variable is set).  */
+  if (getenv ("OMNIBOR_NO_EMBED") != NULL)
+    if (config.omnibor_dir != NULL ||
+       (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+      {
+	omnibor_create_file_no_embed_sha1 (ldelf_emit_note_omnibor_sha1,
+					   omnibor_dir);
+
+	omnibor_create_file_no_embed_sha256 (ldelf_emit_note_omnibor_sha256,
+					     omnibor_dir);
+
+	free (ldelf_emit_note_omnibor_sha1);
+	free (ldelf_emit_note_omnibor_sha256);
+	ldelf_emit_note_omnibor_sha1 = NULL;
+	ldelf_emit_note_omnibor_sha256 = NULL;
+	free (omnibor_dir);
+      }
 
   /* Prevent ld_cleanup from doing anything, after a successful link.  */
   output_filename = NULL;
