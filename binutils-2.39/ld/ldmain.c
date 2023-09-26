@@ -865,6 +865,87 @@ omnibor_is_note_section_present (const char *name, unsigned hash_func_type)
   return NULL;
 }
 
+/* Create a file containing the metadata for the linking process in the
+   OmniBOR context.  Parameter hash_func must be either 0 (for SHA1
+   hash function) or 1 (for SHA256 hash function), otherwise the
+   behaviour is undefined.  */
+
+static bool
+create_omnibor_metadata_file (const char *filename, unsigned hash_func)
+{
+  if (hash_func != 0 && hash_func != 1)
+    return false;
+
+  FILE *metadata_file = fopen (filename, "w");
+  if (metadata_file != NULL)
+    {
+      char outfile_name_abs[PATH_MAX];
+      realpath (output_filename, outfile_name_abs);
+      fwrite ("outfile: path: ", sizeof (char), strlen ("outfile: path: "),
+	      metadata_file);
+      fwrite (outfile_name_abs, sizeof (char), strlen (outfile_name_abs),
+	      metadata_file);
+      fwrite ("\n", sizeof (char), strlen ("\n"), metadata_file);
+
+      struct omnibor_deps *dep_file;
+      for (dep_file = omnibor_deps_head; dep_file != NULL;
+	   dep_file = dep_file->next)
+	{
+	  char *dep_line = (char *) xcalloc (1, sizeof (char));
+
+	  char dep_name_abs[PATH_MAX];
+	  realpath (dep_file->name, dep_name_abs);
+	  omnibor_append_to_string (&dep_line, "infile: ",
+				    strlen (dep_line),
+				    strlen ("infile: "));
+	  /* Save current length of dep_line before characters from hash
+	     are added to the path.  This is done because the calculation
+	     of the length of dep_line from here moving forward is done
+	     manually by adding the length of the following parts of
+	     dep_line since hash can produce '\0' characters, so strlen
+	     is not good enough.  */
+	  unsigned long dep_line_length = strlen (dep_line);
+	  if (hash_func == 0)
+	    {
+	      omnibor_append_to_string (&dep_line, dep_file->sha1_contents,
+					dep_line_length,
+					2 * GITOID_LENGTH_SHA1);
+	      dep_line_length += 2 * GITOID_LENGTH_SHA1;
+	    }
+	  else
+	    {
+	      omnibor_append_to_string (&dep_line, dep_file->sha256_contents,
+					dep_line_length,
+					2 * GITOID_LENGTH_SHA256);
+	      dep_line_length += 2 * GITOID_LENGTH_SHA256;
+	    }
+	  omnibor_append_to_string (&dep_line, " path: ", dep_line_length,
+				    strlen (" path: "));
+	  dep_line_length += strlen (" path: ");
+	  omnibor_append_to_string (&dep_line, dep_name_abs, dep_line_length,
+				    strlen (dep_name_abs));
+	  dep_line_length += strlen (dep_name_abs);
+	  omnibor_append_to_string (&dep_line, "\n", dep_line_length,
+				    strlen ("\n"));
+	  dep_line_length += strlen ("\n");
+
+	  fwrite (dep_line, sizeof (char), dep_line_length, metadata_file);
+
+	  free (dep_line);
+	}
+
+      fwrite ("build_cmd: not available\n", sizeof (char),
+	      strlen ("build_cmd: not available\n"),
+	      metadata_file);
+
+      fclose (metadata_file);
+    }
+  else
+    return false;
+
+  return true;
+}
+
 /* Store the OmniBOR information in the specified directory whose path is
    written in the result_dir parameter.  The hash_size parameter has to be
    either GITOID_LENGTH_SHA1 (for the SHA1 OmniBOR information) or
@@ -1057,6 +1138,13 @@ create_omnibor_document_file (char **name, const char *result_dir,
       fclose (new_file);
     }
   else
+    omnibor_set_contents (name, "", 0);
+
+  omnibor_append_to_string (&new_file_path, ".metadata",
+			    path_dir_temp_len + strlen ("/") + 2 * hash_size,
+			    strlen (".metadata"));
+  if (!create_omnibor_metadata_file (new_file_path,
+				     hash_size == GITOID_LENGTH_SHA1 ? 0 : 1))
     omnibor_set_contents (name, "", 0);
 
   closedir (dir_four);
