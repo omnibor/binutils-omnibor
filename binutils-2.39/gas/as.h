@@ -505,11 +505,14 @@ void write_sha1_omnibor (char **, const char *);
 void write_sha256_omnibor (char **, const char *);
 void omnibor_create_file_no_embed_sha1 (const char *, char *);
 void omnibor_create_file_no_embed_sha256 (const char *, char *);
+bool create_omnibor_metadata_file (unsigned, const char *);
 
 /* More OmniBOR-related function declarations.  Defined in write.c.  */
 void write_omnibor (const char *, const char *);
 
 /* OmniBOR-related variable declarations.  Defined in as.c.  */
+extern char ** omnibor_argv;
+extern int omnibor_argc;
 extern bool omnibor_input_file_is_temporary;
 extern const char *omnibor_dir;
 extern const char *omnibor_input_filename;

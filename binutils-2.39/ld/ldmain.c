@@ -871,17 +871,202 @@ omnibor_is_note_section_present (const char *name, unsigned hash_func_type)
    behaviour is undefined.  */
 
 static bool
-create_omnibor_metadata_file (const char *filename, unsigned hash_func)
+create_omnibor_metadata_file (unsigned hash_func, const char *result_dir,
+			      int argc, char **argv)
 {
   if (hash_func != 0 && hash_func != 1)
     return false;
 
-  FILE *metadata_file = fopen (filename, "w");
+  static const char *const lut = "0123456789abcdef";
+  char *gitoid_output_file = (char *) xcalloc (1, sizeof (char));
+  char *high_ch = (char *) xmalloc (sizeof (char) * 2);
+  high_ch[1] = '\0';
+  char *low_ch = (char *) xmalloc (sizeof (char) * 2);
+  low_ch[1] = '\0';
+
+  /* Find the gitoid of the output artifact.  That gitoid will be the
+     name of the metadata file.  */
+
+  FILE *output_file_handle = fopen (output_filename, "rb");
+  if (output_file_handle == NULL)
+    {
+      free (low_ch);
+      free (high_ch);
+      free (gitoid_output_file);
+      return false;
+    }
+
+  if (hash_func == 0)
+    {
+      unsigned char resblock[GITOID_LENGTH_SHA1];
+
+      calculate_sha1_omnibor (output_file_handle, resblock);
+
+      for (unsigned i = 0; i != GITOID_LENGTH_SHA1; i++)
+	{
+	  high_ch[0] = lut[resblock[i] >> 4];
+	  low_ch[0] = lut[resblock[i] & 15];
+	  omnibor_append_to_string (&gitoid_output_file, high_ch,
+				    i * 2, 2);
+	  omnibor_append_to_string (&gitoid_output_file, low_ch,
+				    i * 2 + 1, 2);
+	}
+    }
+  else
+    {
+      unsigned char resblock[GITOID_LENGTH_SHA256];
+
+      calculate_sha256_omnibor (output_file_handle, resblock);
+
+      for (unsigned i = 0; i != GITOID_LENGTH_SHA256; i++)
+	{
+	  high_ch[0] = lut[resblock[i] >> 4];
+	  low_ch[0] = lut[resblock[i] & 15];
+	  omnibor_append_to_string (&gitoid_output_file, high_ch,
+				    i * 2, 2);
+	  omnibor_append_to_string (&gitoid_output_file, low_ch,
+				    i * 2 + 1, 2);
+	}
+    }
+
+  free (low_ch);
+  free (high_ch);
+
+  fclose (output_file_handle);
+
+  /* Create the metadata file.  */
+
+  DIR *dir_res = NULL;
+  char *path_metadata = (char *) xcalloc (1, sizeof (char));
+
+  if (strcmp ("", result_dir) != 0)
+    {
+      dir_res = opendir (result_dir);
+      if (dir_res == NULL)
+	{
+	  free (path_metadata);
+	  free (gitoid_output_file);
+	  return false;
+	}
+
+      int dfd_res = dirfd (dir_res);
+      mkdirat (dfd_res, "metadata", S_IRWXU);
+      omnibor_append_to_string (&path_metadata, result_dir, strlen (path_metadata),
+				strlen (result_dir));
+      omnibor_append_to_string (&path_metadata, "/metadata", strlen (path_metadata),
+				strlen ("/metadata"));
+    }
+  else
+    {
+      free (path_metadata);
+      free (gitoid_output_file);
+      return false;
+    }
+
+  DIR *dir_metadata = opendir (path_metadata);
+  if (dir_metadata == NULL)
+    {
+      closedir (dir_res);
+      free (path_metadata);
+      free (gitoid_output_file);
+      return false;
+    }
+
+  int dfd_metadata = dirfd (dir_metadata);
+  mkdirat (dfd_metadata, "gnu", S_IRWXU);
+
+  char *path_gnu = (char *) xcalloc (1, sizeof (char));
+  omnibor_append_to_string (&path_gnu, path_metadata, strlen (path_gnu),
+			    strlen (path_metadata));
+  omnibor_append_to_string (&path_gnu, "/gnu", strlen (path_gnu),
+			    strlen ("/gnu"));
+  DIR *dir_gnu = opendir (path_gnu);
+  if (dir_gnu == NULL)
+    {
+      closedir (dir_metadata);
+      closedir (dir_res);
+      free (path_gnu);
+      free (path_metadata);
+      free (gitoid_output_file);
+      return false;
+    }
+
+  int dfd_gnu = dirfd (dir_gnu);
+
+  char *path_sha = (char *) xcalloc (1, sizeof (char));
+  DIR *dir_sha = NULL;
+  if (hash_func == 0)
+    {
+      mkdirat (dfd_gnu, "gitoid_blob_sha1", S_IRWXU);
+
+      omnibor_append_to_string (&path_sha, path_gnu, strlen (path_sha),
+				strlen (path_gnu));
+      omnibor_append_to_string (&path_sha, "/gitoid_blob_sha1", strlen (path_sha),
+				strlen ("/gitoid_blob_sha1"));
+      dir_sha = opendir (path_sha);
+      if (dir_sha == NULL)
+        {
+	  closedir (dir_gnu);
+	  closedir (dir_metadata);
+	  closedir (dir_res);
+	  free (path_sha);
+	  free (path_gnu);
+	  free (path_metadata);
+	  free (gitoid_output_file);
+	  return false;
+        }
+    }
+  else
+    {
+      mkdirat (dfd_gnu, "gitoid_blob_sha256", S_IRWXU);
+
+      omnibor_append_to_string (&path_sha, path_gnu, strlen (path_sha),
+				strlen (path_gnu));
+      omnibor_append_to_string (&path_sha, "/gitoid_blob_sha256",
+				strlen (path_sha),
+				strlen ("/gitoid_blob_sha256"));
+      dir_sha = opendir (path_sha);
+      if (dir_sha == NULL)
+        {
+	  closedir (dir_gnu);
+	  closedir (dir_metadata);
+	  closedir (dir_res);
+	  free (path_sha);
+	  free (path_gnu);
+	  free (path_metadata);
+	  free (gitoid_output_file);
+	  return false;
+        }
+    }
+
+  char *full_path = (char *) xcalloc (1, sizeof (char));
+  omnibor_append_to_string (&full_path, path_sha, strlen (full_path),
+			    strlen (path_sha));
+  omnibor_append_to_string (&full_path, "/", strlen (full_path),
+			    strlen ("/"));
+  if (hash_func == 0)
+    omnibor_append_to_string (&full_path, gitoid_output_file,
+			      strlen (full_path),
+			      2 * GITOID_LENGTH_SHA1);
+  else
+    omnibor_append_to_string (&full_path, gitoid_output_file,
+			      strlen (full_path),
+			      2 * GITOID_LENGTH_SHA256);
+
+  FILE *metadata_file = fopen (full_path, "w");
   if (metadata_file != NULL)
     {
       char outfile_name_abs[PATH_MAX];
       realpath (output_filename, outfile_name_abs);
-      fwrite ("outfile: path: ", sizeof (char), strlen ("outfile: path: "),
+      fwrite ("outfile: ", sizeof (char), strlen ("outfile: "),
+	      metadata_file);
+      if (hash_func == 0)
+	fwrite (gitoid_output_file, sizeof (char), 2 * GITOID_LENGTH_SHA1,
+		metadata_file);
+      else
+	fwrite (gitoid_output_file, sizeof (char), 2 * GITOID_LENGTH_SHA256,
+		metadata_file);
+      fwrite (" path: ", sizeof (char), strlen (" path: "),
 	      metadata_file);
       fwrite (outfile_name_abs, sizeof (char), strlen (outfile_name_abs),
 	      metadata_file);
@@ -934,15 +1119,44 @@ create_omnibor_metadata_file (const char *filename, unsigned hash_func)
 	  free (dep_line);
 	}
 
-      fwrite ("build_cmd: not available\n", sizeof (char),
-	      strlen ("build_cmd: not available\n"),
+      fwrite ("build_cmd: ", sizeof (char), strlen ("build_cmd: "),
+	      metadata_file);
+      fwrite (argv[0], sizeof (char), strlen (argv[0]), metadata_file);
+      for (int i = 1; i < argc; ++i)
+	{
+	  fwrite (" ", sizeof (char), strlen (" "), metadata_file);
+	  fwrite (argv[i], sizeof (char), strlen (argv[i]), metadata_file);
+	}
+
+      fwrite ("\n==== End of raw info for this process\n", sizeof (char),
+	      strlen ("\n==== End of raw info for this process\n"),
 	      metadata_file);
 
       fclose (metadata_file);
     }
   else
-    return false;
+    {
+      closedir (dir_sha);
+      closedir (dir_gnu);
+      closedir (dir_metadata);
+      closedir (dir_res);
+      free (full_path);
+      free (path_sha);
+      free (path_gnu);
+      free (path_metadata);
+      free (gitoid_output_file);
+      return false;
+    }
 
+  closedir (dir_sha);
+  closedir (dir_gnu);
+  closedir (dir_metadata);
+  closedir (dir_res);
+  free (full_path);
+  free (path_sha);
+  free (path_gnu);
+  free (path_metadata);
+  free (gitoid_output_file);
   return true;
 }
 
@@ -1138,13 +1352,6 @@ create_omnibor_document_file (char **name, const char *result_dir,
       fclose (new_file);
     }
   else
-    omnibor_set_contents (name, "", 0);
-
-  omnibor_append_to_string (&new_file_path, ".metadata",
-			    path_dir_temp_len + strlen ("/") + 2 * hash_size,
-			    strlen (".metadata"));
-  if (!create_omnibor_metadata_file (new_file_path,
-				     hash_size == GITOID_LENGTH_SHA1 ? 0 : 1))
     omnibor_set_contents (name, "", 0);
 
   closedir (dir_four);
@@ -2015,7 +2222,6 @@ main (int argc, char **argv)
           omnibor_set_contents (&gitoid_sha256, "", 0);
         }
 
-      omnibor_clear_deps ();
       omnibor_clear_note_sections ();
 
       if (strcmp ("", gitoid_sha1) == 0 || strcmp ("", gitoid_sha256) == 0)
@@ -2030,6 +2236,7 @@ main (int argc, char **argv)
 	      free (ldelf_emit_note_omnibor_sha256);
 	      ldelf_emit_note_omnibor_sha256 = NULL;
 	    }
+	  omnibor_clear_deps ();
 	  free (gitoid_sha256);
 	  free (gitoid_sha1);
 	  free (omnibor_dir);
@@ -2047,8 +2254,6 @@ main (int argc, char **argv)
 
       free (gitoid_sha256);
       free (gitoid_sha1);
-      if (getenv ("OMNIBOR_NO_EMBED") == NULL)
-	free (omnibor_dir);
     }
 
   /* Even if we're producing relocatable output, some non-fatal errors should
@@ -2144,8 +2349,30 @@ main (int argc, char **argv)
 	free (ldelf_emit_note_omnibor_sha256);
 	ldelf_emit_note_omnibor_sha1 = NULL;
 	ldelf_emit_note_omnibor_sha256 = NULL;
-	free (omnibor_dir);
       }
+
+  /* Generate (SHA1 and SHA256) metadata files in the OmniBOR concept if OmniBOR
+     calculation is enabled.  */
+  if (config.omnibor_dir != NULL ||
+     (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+    {
+      if (!create_omnibor_metadata_file (0, omnibor_dir, argc, argv))
+	{
+	  omnibor_clear_deps ();
+	  free (omnibor_dir);
+	  einfo (_("%P: Error in creation of OmniBOR metadata SHA1 file\n"));
+	  xexit (1);
+	}
+      if (!create_omnibor_metadata_file (1, omnibor_dir, argc, argv))
+	{
+	  omnibor_clear_deps ();
+	  free (omnibor_dir);
+	  einfo (_("%P: Error in creation of OmniBOR metadata SHA256 file\n"));
+	  xexit (1);
+	}
+      omnibor_clear_deps ();
+      free (omnibor_dir);
+    }
 
   /* Prevent ld_cleanup from doing anything, after a successful link.  */
   output_filename = NULL;

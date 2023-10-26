@@ -48,6 +48,18 @@
 #define GITOID_LENGTH_SHA1 20
 #define GITOID_LENGTH_SHA256 32
 
+/* Holds the original argv passed to assembler's main when OmniBOR
+   calculation is enabled.  */
+char ** omnibor_argv = NULL;
+
+/* Holds the original argc passed to assembler's main when OmniBOR
+   calculation is enabled.  */
+int omnibor_argc = 0;
+
+/* True if there was a crash during the creation of the OmniBOR
+   Document files, otherwise false.  */
+static bool omnibor_crashed = false;
+
 #ifdef HAVE_ITBL_CPU
 #include "itbl-ops.h"
 #else
@@ -1282,6 +1294,9 @@ close_output_file (void)
   if (!keep_it)
     unlink_if_ordinary (out_file_name);
 
+  if (omnibor_crashed)
+    return;
+
   /* Create files which connect the output file to its OmniBOR Document
      files.  Do it only in the NO_EMBED case (when OMNIBOR_NO_EMBED
      environment variable is set).  */
@@ -1294,8 +1309,33 @@ close_output_file (void)
 					   omnibor_dir_final);
 	omnibor_create_file_no_embed_sha256 (omnibor_no_embed_gitoid_sha256,
 					     omnibor_dir_final);
-	free (omnibor_dir_final);
+	if (!((omnibor_dir != NULL ||
+	      (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0)) &&
+	     !(omnibor_input_file_is_temporary && input_omnibor_section != NULL)))
+	  free (omnibor_dir_final);
       }
+
+  /* Generate (SHA1 and SHA256) metadata files in the OmniBOR concept if OmniBOR
+     calculation is enabled.  */
+  if ((omnibor_dir != NULL ||
+      (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0)) &&
+      !(omnibor_input_file_is_temporary && input_omnibor_section != NULL))
+    {
+      if (!create_omnibor_metadata_file (0, omnibor_dir_final))
+	{
+	  omnibor_clear_deps ();
+	  free (omnibor_dir_final);
+	  as_fatal (_("Error in creation of OmniBOR metadata SHA1 file"));
+	}
+      if (!create_omnibor_metadata_file (1, omnibor_dir_final))
+	{
+	  omnibor_clear_deps ();
+	  free (omnibor_dir_final);
+	  as_fatal (_("Error in creation of OmniBOR metadata SHA256 file"));
+	}
+      omnibor_clear_deps ();
+      free (omnibor_dir_final);
+    }
 }
 
 /* The interface between the macro code and gas expression handling.  */
@@ -1401,6 +1441,7 @@ perform_an_assembly_pass (int argc, char ** argv)
 int
 main (int argc, char ** argv)
 {
+  int argc_orig = argc;
   char ** argv_orig = argv;
   struct stat sob;
 
@@ -1658,7 +1699,6 @@ main (int argc, char ** argv)
           omnibor_set_contents (&gitoid_sha256, "", 0);
         }
 
-      omnibor_clear_deps ();
       omnibor_clear_note_sections ();
 
       if (strcmp ("", gitoid_sha1) != 0 && strcmp ("", gitoid_sha256) != 0)
@@ -1684,16 +1724,19 @@ main (int argc, char ** argv)
 	}
       else
         {
+	  omnibor_clear_deps ();
           free (gitoid_sha256);
           free (gitoid_sha1);
           free (omnibor_dir_final);
+          omnibor_crashed = true;
 	  as_fatal (_("Error in creation of OmniBOR Document files"));
 	}
 
+      omnibor_argv = argv_orig;
+      omnibor_argc = argc_orig;
+
       free (gitoid_sha256);
       free (gitoid_sha1);
-      if (getenv ("OMNIBOR_NO_EMBED") == NULL)
-	free (omnibor_dir_final);
     }
 
   xexit (EXIT_SUCCESS);
