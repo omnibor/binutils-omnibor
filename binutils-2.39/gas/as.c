@@ -56,9 +56,14 @@ char ** omnibor_argv = NULL;
    calculation is enabled.  */
 int omnibor_argc = 0;
 
-/* True if there was a crash during the creation of the OmniBOR
-   Document files, otherwise false.  */
-static bool omnibor_crashed = false;
+/* True if there was no error prior to closing the output file as
+   part of the xexit (EXIT_SUCCESS) call, otherwise false.  */
+static bool omnibor_xexit_success = false;
+
+/* True if output file is already closed, otherwise false.  This is
+   used to prevent the infinite recursion in function
+   close_output_file in case as_fatal is called from it.  */
+static bool omnibor_already_closed = false;
 
 #ifdef HAVE_ITBL_CPU
 #include "itbl-ops.h"
@@ -1290,11 +1295,15 @@ set_omnibor_dir (void)
 static void
 close_output_file (void)
 {
+  if (omnibor_xexit_success && omnibor_already_closed)
+    return;
+  omnibor_already_closed = true;
+
   output_file_close (out_file_name);
   if (!keep_it)
     unlink_if_ordinary (out_file_name);
 
-  if (omnibor_crashed)
+  if (!omnibor_xexit_success)
     return;
 
   /* Create files which connect the output file to its OmniBOR Document
@@ -1312,7 +1321,10 @@ close_output_file (void)
 	if (!((omnibor_dir != NULL ||
 	      (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0)) &&
 	     !(omnibor_input_file_is_temporary && input_omnibor_section != NULL)))
-	  free (omnibor_dir_final);
+	  {
+	    omnibor_clear_deps ();
+	    free (omnibor_dir_final);
+	  }
       }
 
   /* Generate (SHA1 and SHA256) metadata files in the OmniBOR concept if OmniBOR
@@ -1728,7 +1740,6 @@ main (int argc, char ** argv)
           free (gitoid_sha256);
           free (gitoid_sha1);
           free (omnibor_dir_final);
-          omnibor_crashed = true;
 	  as_fatal (_("Error in creation of OmniBOR Document files"));
 	}
 
@@ -1738,6 +1749,7 @@ main (int argc, char ** argv)
       free (gitoid_sha256);
       free (gitoid_sha1);
     }
+  omnibor_xexit_success = true;
 
   xexit (EXIT_SUCCESS);
 }
