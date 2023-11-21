@@ -2334,7 +2334,83 @@ convert_ascii_decimal_to_ascii_hex (char *in_array, char *out_array,
     }
 }
 
-/* Handle '.note.omnibor' section from the input assembly file.  */
+/* Handle '.note.omnibor' section from the input assembly file in the
+   no-embed mode.  */
+
+static void
+handle_input_omnibor_section_no_embed (void)
+{
+  char *sec_contents_sha1 =
+	(char *) xcalloc (20 + GITOID_LENGTH_SHA1, sizeof (char));
+  char *sec_contents_gitoid_sha1 =
+	(char *) xcalloc (GITOID_LENGTH_SHA1, sizeof (char));
+  char *sec_contents_fin_sha1 =
+	(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
+  bfd_get_section_contents (stdoutput, input_omnibor_section,
+			    sec_contents_sha1, 0,
+			    20 + GITOID_LENGTH_SHA1);
+  memcpy (sec_contents_gitoid_sha1, sec_contents_sha1 + 20,
+	  GITOID_LENGTH_SHA1);
+  convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid_sha1,
+				      sec_contents_fin_sha1,
+				      GITOID_LENGTH_SHA1);
+  sec_contents_fin_sha1[2 * GITOID_LENGTH_SHA1] = '\0';
+
+  char *sec_contents_sha256 =
+	(char *) xcalloc (20 + GITOID_LENGTH_SHA256, sizeof (char));
+  char *sec_contents_gitoid_sha256 =
+	(char *) xcalloc (GITOID_LENGTH_SHA256, sizeof (char));
+  char *sec_contents_fin_sha256 =
+	(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
+  bfd_get_section_contents (stdoutput, input_omnibor_section,
+			    sec_contents_sha256,
+			    20 + GITOID_LENGTH_SHA1,
+			    20 + GITOID_LENGTH_SHA256);
+  memcpy (sec_contents_gitoid_sha256, sec_contents_sha256 + 20,
+	  GITOID_LENGTH_SHA256);
+  convert_ascii_decimal_to_ascii_hex (sec_contents_gitoid_sha256,
+				      sec_contents_fin_sha256,
+				      GITOID_LENGTH_SHA256);
+  sec_contents_fin_sha256[2 * GITOID_LENGTH_SHA256] = '\0';
+  if (omnibor_input_file_is_temporary)
+    {
+      /* In this case, a new set of OmniBOR Document files will not be created by
+	 the assembler, so the extracted gitoids are the gitoids of the final
+	 OmniBOR Document files.  */
+      omnibor_no_embed_gitoid_sha1 =
+		(char *) xcalloc (2 * GITOID_LENGTH_SHA1 + 1, sizeof (char));
+      memcpy (omnibor_no_embed_gitoid_sha1, sec_contents_fin_sha1,
+	      2 * GITOID_LENGTH_SHA1);
+      omnibor_no_embed_gitoid_sha1[2 * GITOID_LENGTH_SHA1] = '\0';
+
+      omnibor_no_embed_gitoid_sha256 =
+		(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
+      memcpy (omnibor_no_embed_gitoid_sha256, sec_contents_fin_sha256,
+	      2 * GITOID_LENGTH_SHA256);
+      omnibor_no_embed_gitoid_sha256[2 * GITOID_LENGTH_SHA256] = '\0';
+    }
+  else if (omnibor_dir != NULL ||
+	  (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
+    /* In this case, a new set of OmniBOR Document files will be created by
+       the assembler, so just save the extracted gitoids so as to later put
+       them in 'bom' parts of the new OmniBOR Document files' entries which
+       reference the input assembly file.  */
+    omnibor_add_to_note_sections (omnibor_input_filename,
+				  sec_contents_fin_sha1,
+				  sec_contents_fin_sha256,
+				  2 * GITOID_LENGTH_SHA1,
+				  2 * GITOID_LENGTH_SHA256);
+
+  free (sec_contents_fin_sha256);
+  free (sec_contents_gitoid_sha256);
+  free (sec_contents_sha256);
+  free (sec_contents_fin_sha1);
+  free (sec_contents_gitoid_sha1);
+  free (sec_contents_sha1);
+}
+
+/* Handle '.note.omnibor' section from the input assembly file in the
+   embed mode.  */
 
 static void
 handle_input_omnibor_section (void)
@@ -2347,7 +2423,7 @@ handle_input_omnibor_section (void)
      (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))
     {
       char *sec_contents_sha1 =
-		(char *) xcalloc (2 * GITOID_LENGTH_SHA1, sizeof (char));
+		(char *) xcalloc (20 + GITOID_LENGTH_SHA1, sizeof (char));
       char *sec_contents_gitoid_sha1 =
 		(char *) xcalloc (GITOID_LENGTH_SHA1, sizeof (char));
       char *sec_contents_fin_sha1 =
@@ -2363,9 +2439,9 @@ handle_input_omnibor_section (void)
       sec_contents_fin_sha1[2 * GITOID_LENGTH_SHA1] = '\0';
 
       char *sec_contents_sha256 =
-		(char *) xcalloc (2 * GITOID_LENGTH_SHA256, sizeof (char));
+		(char *) xcalloc (20 + GITOID_LENGTH_SHA256, sizeof (char));
       char *sec_contents_gitoid_sha256 =
-		(char *) xcalloc (GITOID_LENGTH_SHA256 + 1, sizeof (char));
+		(char *) xcalloc (GITOID_LENGTH_SHA256, sizeof (char));
       char *sec_contents_fin_sha256 =
 		(char *) xcalloc (2 * GITOID_LENGTH_SHA256 + 1, sizeof (char));
       bfd_get_section_contents (stdoutput, input_omnibor_section,
@@ -2811,9 +2887,33 @@ write_object_file (void)
       bfd_map_over_sections (stdoutput, compress_debug, (char *) 0);
     }
 
+  bool is_input_omnibor_section_empty = false;
   {
     input_omnibor_section = bfd_get_section_by_name (stdoutput, ".note.omnibor");
-    if (input_omnibor_section != NULL)
+    /* No-embed mode for OmniBOR calculation.  */
+    if (getenv ("OMNIBOR_NO_EMBED") != NULL)
+      {
+        if (input_omnibor_section != NULL)
+	  {
+	    output_omnibor_section = NULL;
+	    bfd_section_list_remove (stdoutput, input_omnibor_section);
+	    stdoutput->section_count --;
+	    int i = 0;
+	    bfd_map_over_sections (stdoutput, renumber_sections, &i);
+	    /* In the no-embed mode, process the input '.note.omnibor' section,
+	       which should not be included in the output object file.  */
+	    if (input_omnibor_section->size > 0 &&
+	       (omnibor_input_file_is_temporary ||
+	       (omnibor_dir != NULL ||
+	       (getenv ("OMNIBOR_DIR") != NULL && strlen (getenv ("OMNIBOR_DIR")) > 0))))
+	      {
+		write_contents (stdoutput, input_omnibor_section, (char *) 0);
+		handle_input_omnibor_section_no_embed ();
+	      }
+	  }
+      }
+    /* Embed mode for OmniBOR calculation.  */
+    else if (input_omnibor_section != NULL && input_omnibor_section->size > 0)
       {
         /* If the input to the assembler is a temporary file, the OmniBOR
 	   information in it is valid, as the assembler invocation is a
@@ -2848,8 +2948,31 @@ write_object_file (void)
 	    bfd_map_over_sections (stdoutput, renumber_sections, &i);
 	  }
       }
-    else
+    else if (input_omnibor_section == NULL)
       create_output_omnibor_section ();
+    else
+      {
+        /* This is the case where the input '.note.omnibor' section is
+	   present, but empty.  This is not a regular case, so it is
+	   handled by increasing the size of that section to the proper
+	   value and keeping it in the output object file.  It is then
+	   later filled with the calculated OmniBOR information which
+	   is generated by the assembler.  */
+	output_omnibor_section = input_omnibor_section;
+	elf_section_type (output_omnibor_section) = SHT_NOTE;
+
+	bfd_size_type size_sha1, size_sha256;
+
+	size_sha1 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
+	size_sha1 = (size_sha1 + 3) & -(bfd_size_type) 4;
+	size_sha1 += GITOID_LENGTH_SHA1;
+	size_sha256 = offsetof (Elf_External_Note, name[sizeof "OMNIBOR"]);
+	size_sha256 = (size_sha256 + 3) & -(bfd_size_type) 4;
+	size_sha256 += GITOID_LENGTH_SHA256;
+
+	output_omnibor_section->size = size_sha1 + size_sha256;
+	is_input_omnibor_section_empty = true;
+      }
   }
 
   bfd_map_over_sections (stdoutput, write_contents, (char *) 0);
@@ -2858,7 +2981,8 @@ write_object_file (void)
      section so as to later add them as 'bom' parts for the
      dependency which represents the input assembly file in the OmniBOR
      Document files.  */
-  if (input_omnibor_section != NULL && !omnibor_input_file_is_temporary)
+  if (getenv ("OMNIBOR_NO_EMBED") == NULL && input_omnibor_section != NULL &&
+      !is_input_omnibor_section_empty && !omnibor_input_file_is_temporary)
     handle_input_omnibor_section ();
 }
 
