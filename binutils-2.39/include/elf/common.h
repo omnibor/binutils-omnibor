@@ -1011,6 +1011,11 @@
 
 #define NT_FREEBSD_ABI_TAG	1
 
+/* Values for notes in non-core files using name "GITBOM".  */
+
+#define NT_GITBOM_SHA1		1	/* the hashing algorithm is SHA1.  */
+#define NT_GITBOM_SHA256	2	/* the hashing algorithm is SHA256.  */
+
 /* Values for FDO .note.package notes as defined on https://systemd.io/COREDUMP_PACKAGE_METADATA/  */
 #define FDO_PACKAGING_METADATA	0xcafe1a7e
 
