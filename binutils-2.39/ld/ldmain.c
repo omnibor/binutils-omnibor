@@ -1080,9 +1080,16 @@ create_omnibor_metadata_file (unsigned hash_func, const char *result_dir,
 
 	  char dep_name_abs[PATH_MAX];
 	  realpath (dep_file->name, dep_name_abs);
-	  omnibor_append_to_string (&dep_line, "infile: ",
-				    strlen (dep_line),
-				    strlen ("infile: "));
+	  /* Shared object files are represented with tag 'dynlib' instead
+	     of 'infile', which represents regular dependencies.  */
+	  if (strstr (dep_name_abs, ".so"))
+	    omnibor_append_to_string (&dep_line, "dynlib: ",
+				      strlen (dep_line),
+				      strlen ("dynlib: "));
+	  else
+	    omnibor_append_to_string (&dep_line, "infile: ",
+				      strlen (dep_line),
+				      strlen ("infile: "));
 	  /* Save current length of dep_line before characters from hash
 	     are added to the path.  This is done because the calculation
 	     of the length of dep_line from here moving forward is done
@@ -1437,6 +1444,10 @@ write_sha1_omnibor (char **name, const char *result_dir)
   for (dep_file = omnibor_deps_head; dep_file != NULL;
        dep_file = dep_file->next)
     {
+      /* Shared object files are not to be added as dependencies as they
+	 could differ at runtime.  */
+      if (strstr (dep_file->name, ".so"))
+	continue;
       omnibor_append_to_string (&new_file_contents, "blob ",
 				current_length,
 				strlen ("blob "));
@@ -1554,6 +1565,10 @@ write_sha256_omnibor (char **name, const char *result_dir)
   for (dep_file = omnibor_deps_head; dep_file != NULL;
        dep_file = dep_file->next)
     {
+      /* Shared object files are not to be added as dependencies as they
+	 could differ at runtime.  */
+      if (strstr (dep_file->name, ".so"))
+	continue;
       omnibor_append_to_string (&new_file_contents, "blob ",
 				current_length,
 				strlen ("blob "));
